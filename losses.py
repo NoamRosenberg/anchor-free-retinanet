@@ -24,7 +24,7 @@ def calc_iou(a, b):
 class FocalLoss(nn.Module):
     #def __init__(self):
 
-    def forward(self, classifications, regressions, anchors, annotations):
+    def forward(self, classifications, regressions, anchors, annotations, image):
         alpha = 0.25
         gamma = 2.0
         batch_size = classifications.shape[0]
@@ -53,6 +53,49 @@ class FocalLoss(nn.Module):
                 continue
 
             classification = torch.clamp(classification, 1e-4, 1.0 - 1e-4)
+
+            ##build projections
+            pyramid_levels = [3, 4, 5, 6, 7]
+            strides = [2 ** x for x in pyramid_levels]
+            image_shape = image.shape[2:]
+            image_shape = np.array(image_shape)
+            image_shapes = [(image_shape + 2 ** x - 1) // (2 ** x) for x in pyramid_levels]
+
+            #compute projection boxes
+            projection_boxes_ls = []
+            single_box_projections = torch.ones(len(pyramid_levels),5)*-1
+            effective_box          = torch.ones(len(pyramid_levels),5)*-1
+            ignoring_box           = torch.ones(len(pyramid_levels),5)*-1
+            for single_annotation_box in bbox_annotation:
+                single_box_projections[:,:4] = [(single_annotation_box[:4] + 2 ** x - 1) // (2 ** x) for x in pyramid_levels]### NOT SURE IF THIS IS ACCURATE
+                single_box_projections[:,4]  = single_annotation_box[4]
+                assert (single_box_projections == -1).sum() == 0, "single box projections haven't been filled with values"
+                # compute effective and ignoring and the rest, regions
+
+
+                e_ef = 0.2
+                e_ig = 0.5
+                projections_height  = single_box_projections[:,3] - single_box_projections[:,1]
+                projections_width   = single_box_projections[:,2] - single_box_projections[:,0]
+                effective_box[:,3]  = single_box_projections[:,3] - ((1.0 - e_ef)/2) * projections_height
+                effective_box[:,1]  = single_box_projections[:,1] + ((1.0 - e_ef)/2) * projections_height
+                effective_box[:,2]  = single_box_projections[:,2] - ((1.0 - e_ef)/2) * projections_width
+                effective_box[:,0]  = single_box_projections[:,0] + ((1.0 - e_ef)/2) * projections_width
+                ignoring_box[:,3]   = single_box_projections[:,3] - ((1.0 - e_ig)/2) * projections_height
+                ignoring_box[:,1]   = single_box_projections[:,1] + ((1.0 - e_ig)/2) * projections_height
+                ignoring_box[:,2]   = single_box_projections[:,2] - ((1.0 - e_ig)/2) * projections_width
+                ignoring_box[:,0]   = single_box_projections[:,0] + ((1.0 - e_ig)/2) * projections_width
+
+                assert (effective_box[:,3] < effective_box[:,1]).sum() == 0, "effective box not computed correctly y2 is smaller than y1"
+                assert (effective_box[:,2] < effective_box[:,0]).sum() == 0, "effective box not computed correctly x2 is smaller than x1"
+                assert (ignoring_box[:,3]  < ignoring_box[:,1]).sum()  == 0, "effective box not computed correctly y2 is smaller than y1"
+                assert (ignoring_box[:,2]  < ignoring_box[:,0]).sum()  == 0, "effective box not computed correctly x2 is smaller than x1"
+                projection_boxes_ls.append(single_box_projections)
+
+            projection_boxes = torch.cat(projection_boxes_ls, dim=0)
+
+
+            #Check if this is apx accurate
 
             IoU = calc_iou(anchors[0, :, :], bbox_annotation[:, :4]) # num_anchors x num_annotations
 
