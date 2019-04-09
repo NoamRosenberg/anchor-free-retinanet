@@ -64,11 +64,15 @@ class FocalLoss(nn.Module):
             effective_box          = torch.ones(len(pyramid_levels),5)*-1
             ignoring_box           = torch.ones(len(pyramid_levels),5)*-1
             for single_annotation_box in bbox_annotation:
-                single_box_projections[:,:4] = [(single_annotation_box[:4] + 2 ** x - 1) // (2 ** x) for x in pyramid_levels]### NOT SURE IF THIS IS ACCURATE
-                single_box_projections[:,4]  = single_annotation_box[4]
-                assert (single_box_projections == -1).sum() == 0, "single box projections haven't been filled with values"
-                # compute effective and ignoring and the rest, regions
+                single_box_projections[:,:4] = torch.stack([(single_annotation_box[:4] + 2 ** x - 1) // (2 ** x) for x in pyramid_levels])### NOT SURE IF THIS IS ACCURATE
 
+                #set classes for boxes
+                single_box_projections[:,4]  = single_annotation_box[4]
+                effective_box[:,4]           = single_annotation_box[4]
+                ignoring_box[:,4]            = single_annotation_box[4]
+
+#                assert (single_box_projections == -1).sum() == 0, "single box projections haven't been filled with values"
+                # compute coordinates of effective and ignoring and the rest, regions
 
                 e_ef = 0.2
                 e_ig = 0.5
@@ -83,56 +87,70 @@ class FocalLoss(nn.Module):
                 ignoring_box[:,2]   = single_box_projections[:,2] - ((1.0 - e_ig)/2) * projections_width
                 ignoring_box[:,0]   = single_box_projections[:,0] + ((1.0 - e_ig)/2) * projections_width
 
-                assert (effective_box[:,3] < effective_box[:,1]).sum() == 0, "effective box not computed correctly y2 is smaller than y1"
-                assert (effective_box[:,2] < effective_box[:,0]).sum() == 0, "effective box not computed correctly x2 is smaller than x1"
-                assert (ignoring_box[:,3]  < ignoring_box[:,1]).sum()  == 0, "effective box not computed correctly y2 is smaller than y1"
-                assert (ignoring_box[:,2]  < ignoring_box[:,0]).sum()  == 0, "effective box not computed correctly x2 is smaller than x1"
+#                assert (effective_box[:,3] < effective_box[:,1]).sum() == 0, "effective box not computed correctly y2 is smaller than y1"
+#                assert (effective_box[:,2] < effective_box[:,0]).sum() == 0, "effective box not computed correctly x2 is smaller than x1"
+#                assert (ignoring_box[:,3]  < ignoring_box[:,1]).sum()  == 0, "effective box not computed correctly y2 is smaller than y1"
+#                assert (ignoring_box[:,2]  < ignoring_box[:,0]).sum()  == 0, "effective box not computed correctly x2 is smaller than x1"
                 projection_boxes_ls.append(single_box_projections)
+                effective_boxes_ls.append(effective_box)
+                ignoring_boxes_ls.append(ignoring_box)
             #Dimensions number_of_annotation_in_image X 5_features X 4_coordinates+1_class
-            projection_boxes = torch.cat(projection_boxes_ls, dim=0)
-            effective_boxes  = torch.cat(effective_boxes_ls, dim=0)
-            effective_boxes  = torch.cat(ignoring_boxes_ls, dim=0)
+            projection_boxes = torch.stack(projection_boxes_ls)
+            effective_boxes  = torch.stack(effective_boxes_ls)
+            ignoring_boxes  = torch.stack(ignoring_boxes_ls)
 
-
-
-            new_feature_idx = [feature_shapes[pyramid_idx].shape[0] * feature_shapes[pyramid_idx].shape[1] for pyramid_idx in range(len(pyramid_levels))]
-            last_idx = 0
-            for pyramid_idx in range(len(pyramid_levels)):
-                classification[last_idx:pyramid_idx]
-                last_idx = pyramid_idx
-
-
-
-            #Check if this is apx accurate
-
-            IoU = calc_iou(anchors[0, :, :], bbox_annotation[:, :4]) # num_anchors x num_annotations
-
-            IoU_max, IoU_argmax = torch.max(IoU, dim=1) # num_anchors x 1
-
-            #import pdb
-            #pdb.set_trace()
-
-            # compute the loss for classification
-            targets = torch.ones(classification.shape) * -1
+            #Fill target maps with zeros
+            targets = torch.zeros(classification.shape)
             targets = targets.cuda()
 
-            targets[torch.lt(IoU_max, 0.4), :] = 0
+            new_feature_idx = np.cumsum([0] + [feature_shapes[pyramid_idx][0] * feature_shapes[pyramid_idx][1] for pyramid_idx in range(len(pyramid_levels))])
 
-            positive_indices = torch.ge(IoU_max, 0.5)
+            for pyramid_idx in range(len(pyramid_levels) - 1):
+                #create indices for looping over features
+                next_feature_index = int(new_feature_idx[pyramid_idx + 1])
+                last_feature_idx   = int(new_feature_idx[pyramid_idx])
 
-            num_positive_anchors = positive_indices.sum()
+                feature_indices = torch.arange(last_feature_idx, next_feature_index).long()
 
-            assigned_annotations = bbox_annotation[IoU_argmax, :]
+                #Fill up ignoring boxes with -1
+                for box in ignoring_boxes:
+                    x_indices_inside_igbox = (x_grid_order[feature_indices] > (box[pyramid_idx][0] + 1).long()) * (
+                                                x_grid_order[feature_indices] < (box[pyramid_idx][2] + 1).long())
+                    y_indices_inside_igbox = (y_grid_order[feature_indices] > (box[pyramid_idx][1] + 1).long()) * (
+                                                y_grid_order[feature_indices] < (box[pyramid_idx][3] + 1).long())
 
-            targets[positive_indices, :] = 0
-            targets[positive_indices, assigned_annotations[positive_indices, 4].long()] = 1
+                    #only return indices where both x and y coordinates are inside ignoring box
+                    pixel_indices_inside_igbox = x_indices_inside_igbox * y_indices_inside_igbox
+                    #compute class
+                    box_class = box[0, 4].long()
+                    #Fill targets inside effective box with 1. (for the right class)
+                    #Still have to give preference to smaller objects as in paper
+                    targets[feature_indices][pixel_indices_inside_igbox, box_class] = 0.
 
+                #Fill up effective boxes with 1
+                for box in effective_boxes:
+                    x_indices_inside_effbox = (x_grid_order[feature_indices] > (box[pyramid_idx][0] + 1).long()) * (
+                                                x_grid_order[feature_indices] < (box[pyramid_idx][2] + 1).long())
+                    y_indices_inside_effbox = (y_grid_order[feature_indices] > (box[pyramid_idx][1] + 1).long()) * (
+                                                y_grid_order[feature_indices] < (box[pyramid_idx][3] + 1).long())
+
+                    #only return indices where both x and y coordinates are inside effective box
+                    pixel_indices_inside_effbox = x_indices_inside_effbox * y_indices_inside_effbox
+                    #compute class
+                    box_class = box[0, 4].long()
+                    #Fill targets inside effective box with 1. (for the right class)
+                    #Still have to give preference to smaller objects as in paper
+                    targets[feature_indices][pixel_indices_inside_effbox, box_class] = 1.
+
+                ######Think about adding acception for smaller objects when they overlap with larger ones....
+
+            #compute classification loss
             alpha_factor = torch.ones(targets.shape).cuda() * alpha
 
             alpha_factor = torch.where(torch.eq(targets, 1.), alpha_factor, 1. - alpha_factor)
             focal_weight = torch.where(torch.eq(targets, 1.), 1. - classification, classification)
             focal_weight = alpha_factor * torch.pow(focal_weight, gamma)
-
+            ####HOW TO PUT IN
             bce = -(targets * torch.log(classification) + (1.0 - targets) * torch.log(1.0 - classification))
 
             # cls_loss = focal_weight * torch.pow(bce, gamma)

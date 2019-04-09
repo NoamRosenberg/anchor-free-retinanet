@@ -265,8 +265,8 @@ class ResNet(nn.Module):
         x_grid_order = torch.cat(x_grid_ls)
         y_grid_order = torch.cat(y_grid_ls)
 
-        assert classification.shape[1] == x_grid_order[0] == y_grid_order[0]
-        assert classification.shape[2] == x_grid_order[1] == y_grid_order[1]
+#        assert classification.shape[1] == x_grid_order[0] == y_grid_order[0], 'not same shape'
+#        assert classification.shape[2] == x_grid_order[1] == y_grid_order[1], 'not same shape'
 
 
         if self.training:
