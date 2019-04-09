@@ -115,7 +115,6 @@ class ClassificationModel(nn.Module):
         super(ClassificationModel, self).__init__()
 
         self.num_classes = num_classes
-        self.num_anchors = num_anchors
         
         self.conv1 = nn.Conv2d(num_features_in, feature_size, kernel_size=3, padding=1)
         self.act1 = nn.ReLU()
@@ -129,7 +128,7 @@ class ClassificationModel(nn.Module):
         self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
         self.act4 = nn.ReLU()
 
-        self.output = nn.Conv2d(feature_size, num_anchors*num_classes, kernel_size=3, padding=1)
+        self.output = nn.Conv2d(feature_size, num_classes, kernel_size=3, padding=1)
         self.output_act = nn.Sigmoid()
 
     def forward(self, x):
@@ -149,14 +148,15 @@ class ClassificationModel(nn.Module):
         out = self.output(out)
         out = self.output_act(out)
 
-        # out is B x C x W x H, with C = n_classes + n_anchors
-        out1 = out.permute(0, 2, 3, 1)
+        # out is B x C x W x H, with C = n_classes
+        out1 = out.permute(0, 2, 3, 1) # B x W x H x n_Classes
 
-        batch_size, width, height, channels = out1.shape
-
-        out2 = out1.view(batch_size, width, height, self.num_anchors, self.num_classes)
-
-        return out2.contiguous().view(x.shape[0], -1, self.num_classes)
+        x_grid, y_grid = torch.meshgrid((torch.arange(out1.shape[1]), torch.arange(out1.shape[2])))
+        #make sure we follow the order of the grid
+        classifications = out1.contiguous().view(x.shape[0], -1, self.num_classes)
+        x_grid_order    = x_grid.contiguous().view(-1)
+        y_grid_order    = y_grid.contiguous().view(-1)
+        return classifications, x_grid_order, y_grid_order
 
 class ResNet(nn.Module):
 
@@ -252,12 +252,25 @@ class ResNet(nn.Module):
 
         regression = torch.cat([self.regressionModel(feature) for feature in features], dim=1)
 
-        classification = torch.cat([self.classificationModel(feature) for feature in features], dim=1)
+        classification_ls = []
+        x_grid_ls = []
+        y_grid_ls = []
+        for feature in features:
+            classification_per_feature, x_grid_order_, y_grid_order_ = self.classificationModel(feature)
+            classification_ls.append(classification_per_feature)
+            x_grid_ls.append(x_grid_order_)
+            y_grid_ls.append(y_grid_order_)
 
-        anchors = self.anchors(img_batch)
+        classification = torch.cat(classification_ls, dim=1)
+        x_grid_order = torch.cat(x_grid_ls)
+        y_grid_order = torch.cat(y_grid_ls)
+
+        assert classification.shape[1] == x_grid_order[0] == y_grid_order[0]
+        assert classification.shape[2] == x_grid_order[1] == y_grid_order[1]
+
 
         if self.training:
-            return self.focalLoss(classification, regression, anchors, annotations, img_batch)
+            return self.focalLoss(classification, regression, annotations, img_batch, x_grid_order, y_grid_order)
         else:
             transformed_anchors = self.regressBoxes(anchors, regression)
             transformed_anchors = self.clipBoxes(transformed_anchors, img_batch)

@@ -24,19 +24,14 @@ def calc_iou(a, b):
 class FocalLoss(nn.Module):
     #def __init__(self):
 
-    def forward(self, classifications, regressions, anchors, annotations, image):
+    def forward(self, classifications, regressions, annotations, image, x_grid_order, y_grid_order):
         alpha = 0.25
         gamma = 2.0
         batch_size = classifications.shape[0]
         classification_losses = []
         regression_losses = []
 
-        anchor = anchors[0, :, :]
 
-        anchor_widths  = anchor[:, 2] - anchor[:, 0]
-        anchor_heights = anchor[:, 3] - anchor[:, 1]
-        anchor_ctr_x   = anchor[:, 0] + 0.5 * anchor_widths
-        anchor_ctr_y   = anchor[:, 1] + 0.5 * anchor_heights
 
         for j in range(batch_size):
 
@@ -59,10 +54,12 @@ class FocalLoss(nn.Module):
             strides = [2 ** x for x in pyramid_levels]
             image_shape = image.shape[2:]
             image_shape = np.array(image_shape)
-            image_shapes = [(image_shape + 2 ** x - 1) // (2 ** x) for x in pyramid_levels]
+            feature_shapes = [(image_shape + 2 ** x - 1) // (2 ** x) for x in pyramid_levels]
 
             #compute projection boxes
             projection_boxes_ls = []
+            effective_boxes_ls = []
+            ignoring_boxes_ls = []
             single_box_projections = torch.ones(len(pyramid_levels),5)*-1
             effective_box          = torch.ones(len(pyramid_levels),5)*-1
             ignoring_box           = torch.ones(len(pyramid_levels),5)*-1
@@ -91,8 +88,19 @@ class FocalLoss(nn.Module):
                 assert (ignoring_box[:,3]  < ignoring_box[:,1]).sum()  == 0, "effective box not computed correctly y2 is smaller than y1"
                 assert (ignoring_box[:,2]  < ignoring_box[:,0]).sum()  == 0, "effective box not computed correctly x2 is smaller than x1"
                 projection_boxes_ls.append(single_box_projections)
-
+            #Dimensions number_of_annotation_in_image X 5_features X 4_coordinates+1_class
             projection_boxes = torch.cat(projection_boxes_ls, dim=0)
+            effective_boxes  = torch.cat(effective_boxes_ls, dim=0)
+            effective_boxes  = torch.cat(ignoring_boxes_ls, dim=0)
+
+
+
+            new_feature_idx = [feature_shapes[pyramid_idx].shape[0] * feature_shapes[pyramid_idx].shape[1] for pyramid_idx in range(len(pyramid_levels))]
+            last_idx = 0
+            for pyramid_idx in range(len(pyramid_levels)):
+                classification[last_idx:pyramid_idx]
+                last_idx = pyramid_idx
+
 
 
             #Check if this is apx accurate
