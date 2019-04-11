@@ -151,7 +151,7 @@ class ClassificationModel(nn.Module):
         # out is B x C x W x H, with C = n_classes
         out1 = out.permute(0, 2, 3, 1) # B x W x H x n_Classes
 
-        x_grid, y_grid = torch.meshgrid((torch.arange(out1.shape[1]), torch.arange(out1.shape[2])))
+        y_grid, x_grid = torch.meshgrid((torch.arange(out1.shape[1]), torch.arange(out1.shape[2])))
         #make sure we follow the order of the grid
         classifications = out1.contiguous().view(x.shape[0], -1, self.num_classes)
         x_grid_order    = x_grid.contiguous().view(-1)

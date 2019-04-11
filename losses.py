@@ -91,13 +91,13 @@ class FocalLoss(nn.Module):
 #                assert (effective_box[:,2] < effective_box[:,0]).sum() == 0, "effective box not computed correctly x2 is smaller than x1"
 #                assert (ignoring_box[:,3]  < ignoring_box[:,1]).sum()  == 0, "effective box not computed correctly y2 is smaller than y1"
 #                assert (ignoring_box[:,2]  < ignoring_box[:,0]).sum()  == 0, "effective box not computed correctly x2 is smaller than x1"
-                projection_boxes_ls.append(single_box_projections)
-                effective_boxes_ls.append(effective_box)
-                ignoring_boxes_ls.append(ignoring_box)
+                projection_boxes_ls.append(single_box_projections.tolist())
+                effective_boxes_ls.append(effective_box.tolist())
+                ignoring_boxes_ls.append(ignoring_box.tolist())
             #Dimensions number_of_annotation_in_image X 5_features X 4_coordinates+1_class
-            projection_boxes = torch.stack(projection_boxes_ls)
-            effective_boxes  = torch.stack(effective_boxes_ls)
-            ignoring_boxes  = torch.stack(ignoring_boxes_ls)
+            projection_boxes = torch.Tensor(projection_boxes_ls)
+            effective_boxes  = torch.Tensor(effective_boxes_ls)
+            ignoring_boxes  = torch.Tensor(ignoring_boxes_ls)
 
             #Fill target maps with zeros
             targets = torch.zeros(classification.shape)
@@ -115,32 +115,41 @@ class FocalLoss(nn.Module):
                 #Fill up ignoring boxes with -1
                 for box in ignoring_boxes:
                     x_indices_inside_igbox = (x_grid_order[feature_indices] > (box[pyramid_idx][0] + 1).long()) * (
-                                                x_grid_order[feature_indices] < (box[pyramid_idx][2] + 1).long())
+                                                x_grid_order[feature_indices] < (box[pyramid_idx][2]).long())
                     y_indices_inside_igbox = (y_grid_order[feature_indices] > (box[pyramid_idx][1] + 1).long()) * (
-                                                y_grid_order[feature_indices] < (box[pyramid_idx][3] + 1).long())
+                                                y_grid_order[feature_indices] < (box[pyramid_idx][3]).long())
 
                     #only return indices where both x and y coordinates are inside ignoring box
-                    pixel_indices_inside_igbox = x_indices_inside_igbox * y_indices_inside_igbox
+                    pixel_indices_inside_igbox = x_indices_inside_igbox * y_indices_inside_igbox#THIS IS NOT AN INDEX!!!
                     #compute class
                     box_class = box[0, 4].long()
+                    #from bool indices to regular indices
+                    regular_pixel_indices_inside_igbox = pixel_indices_inside_igbox.nonzero().view(-1)
                     #Fill targets inside effective box with 1. (for the right class)
                     #Still have to give preference to smaller objects as in paper
-                    targets[feature_indices][pixel_indices_inside_igbox, box_class] = 0.
+                    #combine indices
+                    combined_indices = feature_indices[regular_pixel_indices_inside_igbox]
+                    targets[combined_indices, box_class] = -1.
+
 
                 #Fill up effective boxes with 1
                 for box in effective_boxes:
                     x_indices_inside_effbox = (x_grid_order[feature_indices] > (box[pyramid_idx][0] + 1).long()) * (
-                                                x_grid_order[feature_indices] < (box[pyramid_idx][2] + 1).long())
+                                                x_grid_order[feature_indices] < (box[pyramid_idx][2]).long())
                     y_indices_inside_effbox = (y_grid_order[feature_indices] > (box[pyramid_idx][1] + 1).long()) * (
-                                                y_grid_order[feature_indices] < (box[pyramid_idx][3] + 1).long())
+                                                y_grid_order[feature_indices] < (box[pyramid_idx][3]).long())
 
                     #only return indices where both x and y coordinates are inside effective box
                     pixel_indices_inside_effbox = x_indices_inside_effbox * y_indices_inside_effbox
                     #compute class
                     box_class = box[0, 4].long()
+                    # from bool indices to regular indices
+                    regular_pixel_indices_inside_effbox = pixel_indices_inside_effbox.nonzero().view(-1)
+                    #combine indices
+                    combined_indices = feature_indices[regular_pixel_indices_inside_effbox]
                     #Fill targets inside effective box with 1. (for the right class)
                     #Still have to give preference to smaller objects as in paper
-                    targets[feature_indices][pixel_indices_inside_effbox, box_class] = 1.
+                    targets[combined_indices, box_class] = 1.
 
                 ######Think about adding acception for smaller objects when they overlap with larger ones....
 
@@ -150,19 +159,20 @@ class FocalLoss(nn.Module):
             alpha_factor = torch.where(torch.eq(targets, 1.), alpha_factor, 1. - alpha_factor)
             focal_weight = torch.where(torch.eq(targets, 1.), 1. - classification, classification)
             focal_weight = alpha_factor * torch.pow(focal_weight, gamma)
-            ####HOW TO PUT IN
+
             bce = -(targets * torch.log(classification) + (1.0 - targets) * torch.log(1.0 - classification))
 
             # cls_loss = focal_weight * torch.pow(bce, gamma)
             cls_loss = focal_weight * bce
-
+            #only back-propagate gradients when output not equal -1 i.e. lets set the loss to zero
             cls_loss = torch.where(torch.ne(targets, -1.0), cls_loss, torch.zeros(cls_loss.shape).cuda())
-
-            classification_losses.append(cls_loss.sum()/torch.clamp(num_positive_anchors.float(), min=1.0))
+            #Normalize with number of pixels in effective region
+            num_in_effective_region = (targets == 1.).sum()
+            classification_losses.append(cls_loss.sum()/torch.clamp(num_in_effective_region.float(), min=1.0))
 
             # compute the loss for regression
 
-            if positive_indices.sum() > 0:
+            if num_in_effective_region > 0:
                 assigned_annotations = assigned_annotations[positive_indices, :]
 
                 anchor_widths_pi = anchor_widths[positive_indices]
