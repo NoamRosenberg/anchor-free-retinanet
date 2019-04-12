@@ -87,7 +87,7 @@ class RegressionModel(nn.Module):
         self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
         self.act4 = nn.ReLU()
 
-        self.output = nn.Conv2d(feature_size, num_anchors*4, kernel_size=3, padding=1)
+        self.output = nn.Conv2d(feature_size, 4, kernel_size=3, padding=1)
 
     def forward(self, x):
 
@@ -105,8 +105,8 @@ class RegressionModel(nn.Module):
 
         out = self.output(out)
 
-        # out is B x C x W x H, with C = 4*num_anchors
-        out = out.permute(0, 2, 3, 1)
+        # out is B x C x W x H, with C = 4 offsets
+        out = out.permute(0, 2, 3, 1) # B x W x H x C
 
         return out.contiguous().view(out.shape[0], -1, 4)
 
@@ -152,10 +152,9 @@ class ClassificationModel(nn.Module):
         out1 = out.permute(0, 2, 3, 1) # B x W x H x n_Classes
 
         y_grid, x_grid = torch.meshgrid((torch.arange(out1.shape[1]), torch.arange(out1.shape[2])))
-        #make sure we follow the order of the grid
         classifications = out1.contiguous().view(x.shape[0], -1, self.num_classes)
-        x_grid_order    = x_grid.contiguous().view(-1)
-        y_grid_order    = y_grid.contiguous().view(-1)
+        x_grid_order    = x_grid.contiguous().view(-1).cuda()
+        y_grid_order    = y_grid.contiguous().view(-1).cuda()
         return classifications, x_grid_order, y_grid_order
 
 class ResNet(nn.Module):

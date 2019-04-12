@@ -27,6 +27,8 @@ class FocalLoss(nn.Module):
     def forward(self, classifications, regressions, annotations, image, x_grid_order, y_grid_order):
         alpha = 0.25
         gamma = 2.0
+        Snorm = 4.0
+        IOULoss = True
         batch_size = classifications.shape[0]
         classification_losses = []
         regression_losses = []
@@ -100,8 +102,18 @@ class FocalLoss(nn.Module):
             ignoring_boxes  = torch.Tensor(ignoring_boxes_ls)
 
             #Fill target maps with zeros
+            #assert classification.shape == regression.shape, 'should be same shape'
             targets = torch.zeros(classification.shape)
+            targets_d_left  = torch.ones(regression.shape[0]) * -1
+            targets_d_right = torch.ones(regression.shape[0]) * -1
+            targets_d_down  = torch.ones(regression.shape[0]) * -1
+            targets_d_up    = torch.ones(regression.shape[0]) * -1
+
             targets = targets.cuda()
+            targets_d_left = targets_d_left.cuda()
+            targets_d_right = targets_d_right.cuda()
+            targets_d_down = targets_d_down.cuda()
+            targets_d_up = targets_d_up.cuda()
 
             new_feature_idx = np.cumsum([0] + [feature_shapes[pyramid_idx][0] * feature_shapes[pyramid_idx][1] for pyramid_idx in range(len(pyramid_levels))])
 
@@ -110,14 +122,14 @@ class FocalLoss(nn.Module):
                 next_feature_index = int(new_feature_idx[pyramid_idx + 1])
                 last_feature_idx   = int(new_feature_idx[pyramid_idx])
 
-                feature_indices = torch.arange(last_feature_idx, next_feature_index).long()
+                feature_indices = torch.arange(last_feature_idx, next_feature_index).cuda().long()
 
                 #Fill up ignoring boxes with -1
                 for box in ignoring_boxes:
-                    x_indices_inside_igbox = (x_grid_order[feature_indices] > (box[pyramid_idx][0] + 1).long()) * (
-                                                x_grid_order[feature_indices] < (box[pyramid_idx][2]).long())
-                    y_indices_inside_igbox = (y_grid_order[feature_indices] > (box[pyramid_idx][1] + 1).long()) * (
-                                                y_grid_order[feature_indices] < (box[pyramid_idx][3]).long())
+                    x_indices_inside_igbox = (x_grid_order[feature_indices] > (box[pyramid_idx][0] + 1).cuda().long()) * (
+                                                x_grid_order[feature_indices] < (box[pyramid_idx][2]).cuda().long())
+                    y_indices_inside_igbox = (y_grid_order[feature_indices] > (box[pyramid_idx][1] + 1).cuda().long()) * (
+                                                y_grid_order[feature_indices] < (box[pyramid_idx][3]).cuda().long())
 
                     #only return indices where both x and y coordinates are inside ignoring box
                     pixel_indices_inside_igbox = x_indices_inside_igbox * y_indices_inside_igbox#THIS IS NOT AN INDEX!!!
@@ -133,11 +145,11 @@ class FocalLoss(nn.Module):
 
 
                 #Fill up effective boxes with 1
-                for box in effective_boxes:
-                    x_indices_inside_effbox = (x_grid_order[feature_indices] > (box[pyramid_idx][0] + 1).long()) * (
-                                                x_grid_order[feature_indices] < (box[pyramid_idx][2]).long())
-                    y_indices_inside_effbox = (y_grid_order[feature_indices] > (box[pyramid_idx][1] + 1).long()) * (
-                                                y_grid_order[feature_indices] < (box[pyramid_idx][3]).long())
+                for i, box in enumerate(effective_boxes):
+                    x_indices_inside_effbox = (x_grid_order[feature_indices] > (projection_boxes[i][pyramid_idx][0] + 1).cuda().long()) * (
+                                                x_grid_order[feature_indices] < (projection_boxes[i][2]).cuda().long())
+                    y_indices_inside_effbox = (y_grid_order[feature_indices] > (projection_boxes[i][1] + 1).cuda().long()) * (
+                                                y_grid_order[feature_indices] < (projection_boxes[i][3]).cuda().long())
 
                     #only return indices where both x and y coordinates are inside effective box
                     pixel_indices_inside_effbox = x_indices_inside_effbox * y_indices_inside_effbox
@@ -147,9 +159,18 @@ class FocalLoss(nn.Module):
                     regular_pixel_indices_inside_effbox = pixel_indices_inside_effbox.nonzero().view(-1)
                     #combine indices
                     combined_indices = feature_indices[regular_pixel_indices_inside_effbox]
+
                     #Fill targets inside effective box with 1. (for the right class)
-                    #Still have to give preference to smaller objects as in paper
+                    #TODO: Still have to give preference to smaller objects in classification as in paper
+                    #TODO: But maybe regression best not be trained at all?
+
                     targets[combined_indices, box_class] = 1.
+
+                    #fill regression targets inside effective box indices
+                    targets_d_left[combined_indices]  = x_grid_order[combined_indices].float() - box[pyramid_idx][0].cuda()
+                    targets_d_right[combined_indices] = box[pyramid_idx][2].cuda() - x_grid_order[combined_indices].float()
+                    targets_d_down[combined_indices]  = y_grid_order[combined_indices].float() - box[pyramid_idx][1].cuda()
+                    targets_d_up[combined_indices]    = box[pyramid_idx][3].cuda() - y_grid_order[combined_indices].float()
 
                 ######Think about adding acception for smaller objects when they overlap with larger ones....
 
@@ -172,46 +193,43 @@ class FocalLoss(nn.Module):
 
             # compute the loss for regression
 
-            if num_in_effective_region > 0:
-                assigned_annotations = assigned_annotations[positive_indices, :]
+            if num_in_effective_region == 0:
+                regression_losses.append(torch.tensor(0).float().cuda())
+                continue
 
-                anchor_widths_pi = anchor_widths[positive_indices]
-                anchor_heights_pi = anchor_heights[positive_indices]
-                anchor_ctr_x_pi = anchor_ctr_x[positive_indices]
-                anchor_ctr_y_pi = anchor_ctr_y[positive_indices]
+            targets_reg = torch.stack((targets_d_left, targets_d_right, targets_d_down, targets_d_up))
+            targets_reg = targets_reg.t()
 
-                gt_widths  = assigned_annotations[:, 2] - assigned_annotations[:, 0]
-                gt_heights = assigned_annotations[:, 3] - assigned_annotations[:, 1]
-                gt_ctr_x   = assigned_annotations[:, 0] + 0.5 * gt_widths
-                gt_ctr_y   = assigned_annotations[:, 1] + 0.5 * gt_heights
+            assert ((targets_reg < -1.).sum() > 0), 'something isnt right about computing of the target regression values'
 
-                # clip widths to 1
-                gt_widths  = torch.clamp(gt_widths, min=1)
-                gt_heights = torch.clamp(gt_heights, min=1)
+            #targets = targets/torch.Tensor([[0.1, 0.1, 0.2, 0.2]]).cuda()
+            #normalization constant
+            targets_reg = targets_reg / Snorm
 
-                targets_dx = (gt_ctr_x - anchor_ctr_x_pi) / anchor_widths_pi
-                targets_dy = (gt_ctr_y - anchor_ctr_y_pi) / anchor_heights_pi
-                targets_dw = torch.log(gt_widths / anchor_widths_pi)
-                targets_dh = torch.log(gt_heights / anchor_heights_pi)
+            if IOULoss:
+                X_gt   = (targets_reg[2] + targets_reg[3]) * (targets_reg[0] + targets_reg[1])
+                X_pred = (regression[2] + regression[3]) * (regression[0]) + regression[1])
+                I_h    = torch.min(targets_reg[2],regression[2], dim=0) + torch.min(targets_reg[3],regression[3], dim=0)
+                I_w    = torch.min(targets_reg[0],regression[0], dim=0) + torch.min(targets_reg[1],regression[1], dim=0)
+                I = I_h * I_w
+                U = X_pred + X_gt - I
+                IOU = I / U
+                regression_loss = -torch.log(IOU)
 
-                targets = torch.stack((targets_dx, targets_dy, targets_dw, targets_dh))
-                targets = targets.t()
-
-                targets = targets/torch.Tensor([[0.1, 0.1, 0.2, 0.2]]).cuda()
-
-
-                negative_indices = 1 - positive_indices
-
-                regression_diff = torch.abs(targets - regression[positive_indices, :])
+            else:
+                regression_diff = torch.abs(targets_reg - regression)
 
                 regression_loss = torch.where(
                     torch.le(regression_diff, 1.0 / 9.0),
                     0.5 * 9.0 * torch.pow(regression_diff, 2),
                     regression_diff - 0.5 / 9.0
                 )
-                regression_losses.append(regression_loss.mean())
-            else:
-                regression_losses.append(torch.tensor(0).float().cuda())
+
+                regression_loss = torch.where(targets != -1, regression_loss, torch.zeros(regression_loss.shape).cuda())
+                num_regressions_pixels_in_effective_region = num_in_effective_region * 4
+                #compute mean
+            regression_losses.append(regression_loss.sum() / num_regressions_pixels_in_effective_region)
+
 
         return torch.stack(classification_losses).mean(dim=0, keepdim=True), torch.stack(regression_losses).mean(dim=0, keepdim=True)
 
