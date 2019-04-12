@@ -146,31 +146,32 @@ class FocalLoss(nn.Module):
 
                 #Fill up effective boxes with 1
                 for i, box in enumerate(effective_boxes):
-                    x_indices_inside_effbox = (x_grid_order[feature_indices] > (projection_boxes[i][pyramid_idx][0] + 1).cuda().long()) * (
-                                                x_grid_order[feature_indices] < (projection_boxes[i][2]).cuda().long())
-                    y_indices_inside_effbox = (y_grid_order[feature_indices] > (projection_boxes[i][1] + 1).cuda().long()) * (
-                                                y_grid_order[feature_indices] < (projection_boxes[i][3]).cuda().long())
+                    x_indices_inside_effbox = (x_grid_order[feature_indices] > (box[pyramid_idx][0] + 1).cuda().long()) * (
+                                                x_grid_order[feature_indices] < (box[pyramid_idx][2]).cuda().long())
+                    y_indices_inside_effbox = (y_grid_order[feature_indices] > (box[pyramid_idx][1] + 1).cuda().long()) * (
+                                                y_grid_order[feature_indices] < (box[pyramid_idx][3]).cuda().long())
 
                     #only return indices where both x and y coordinates are inside effective box
-                    pixel_indices_inside_effbox = x_indices_inside_effbox * y_indices_inside_effbox
+                    bool_pixel_indices_inside_effbox = x_indices_inside_effbox * y_indices_inside_effbox
                     #compute class
                     box_class = box[0, 4].long()
                     # from bool indices to regular indices
-                    regular_pixel_indices_inside_effbox = pixel_indices_inside_effbox.nonzero().view(-1)
+                    pixel_indices_inside_effbox = bool_pixel_indices_inside_effbox.nonzero().view(-1)
                     #combine indices
-                    combined_indices = feature_indices[regular_pixel_indices_inside_effbox]
+                    combined_indices = feature_indices[pixel_indices_inside_effbox]
 
                     #Fill targets inside effective box with 1. (for the right class)
                     #TODO: Still have to give preference to smaller objects in classification as in paper
                     #TODO: But maybe regression best not be trained at all?
 
                     targets[combined_indices, box_class] = 1.
+                    projections_for_single_box = projection_boxes[i]
 
                     #fill regression targets inside effective box indices
-                    targets_d_left[combined_indices]  = x_grid_order[combined_indices].float() - box[pyramid_idx][0].cuda()
-                    targets_d_right[combined_indices] = box[pyramid_idx][2].cuda() - x_grid_order[combined_indices].float()
-                    targets_d_down[combined_indices]  = y_grid_order[combined_indices].float() - box[pyramid_idx][1].cuda()
-                    targets_d_up[combined_indices]    = box[pyramid_idx][3].cuda() - y_grid_order[combined_indices].float()
+                    targets_d_left[combined_indices]  = x_grid_order[combined_indices].float() - projections_for_single_box[pyramid_idx][0].cuda()
+                    targets_d_right[combined_indices] = projections_for_single_box[pyramid_idx][2].cuda() - x_grid_order[combined_indices].float()
+                    targets_d_down[combined_indices]  = y_grid_order[combined_indices].float() - projections_for_single_box[pyramid_idx][1].cuda()
+                    targets_d_up[combined_indices]    = projections_for_single_box[pyramid_idx][3].cuda() - y_grid_order[combined_indices].float()
 
                 ######Think about adding acception for smaller objects when they overlap with larger ones....
 
@@ -200,35 +201,40 @@ class FocalLoss(nn.Module):
             targets_reg = torch.stack((targets_d_left, targets_d_right, targets_d_down, targets_d_up))
             targets_reg = targets_reg.t()
 
-            assert ((targets_reg < -1.).sum() > 0), 'something isnt right about computing of the target regression values'
+            #assert ((targets_reg < -1.).sum() > 0), 'something isnt right about computing of the target regression values'
 
-            #targets = targets/torch.Tensor([[0.1, 0.1, 0.2, 0.2]]).cuda()
-            #normalization constant
-            targets_reg = targets_reg / Snorm
+
+
+
+            #compute indices for effective region
+            indices_for_eff_region = (targets == 1.).nonzero()[:,0]
+            #only compute regression for effective region
+            targets_reg = targets_reg[indices_for_eff_region]
+            regression = regression[indices_for_eff_region]
 
             if IOULoss:
-                X_gt   = (targets_reg[2] + targets_reg[3]) * (targets_reg[0] + targets_reg[1])
-                X_pred = (regression[2] + regression[3]) * (regression[0]) + regression[1])
-                I_h    = torch.min(targets_reg[2],regression[2], dim=0) + torch.min(targets_reg[3],regression[3], dim=0)
-                I_w    = torch.min(targets_reg[0],regression[0], dim=0) + torch.min(targets_reg[1],regression[1], dim=0)
-                I = I_h * I_w
-                U = X_pred + X_gt - I
-                IOU = I / U
+                # normalization constant
+                targets_reg = targets_reg / Snorm #TODO: Dont forget to unnormalize the results
+
+                x_gt   = (targets_reg[:, 2] + targets_reg[:, 3]) * (targets_reg[:, 0] + targets_reg[:, 1])
+                x_pred = (regression[:, 2] + regression[:, 3]) * (regression[:, 0] + regression[:, 1])
+
+                i_h    = torch.where(targets_reg[:, 2] < regression[:, 2], targets_reg[:, 2], regression[:, 2]) + \
+                         torch.where(targets_reg[:, 3] <regression[:, 3], targets_reg[:, 3], regression[:, 3])
+                i_w    = torch.where(targets_reg[:, 0] < regression[:, 0], targets_reg[:, 0], regression[:, 0]) + \
+                         torch.where(targets_reg[:, 1] < regression[:, 1], targets_reg[:, 1], regression[:, 1])
+                i = i_h * i_w
+                u = x_pred + x_gt - i
+                IOU = i / u
                 regression_loss = -torch.log(IOU)
-
+                regression_losses.append(regression_loss.mean())
             else:
+                #targets = targets / 0.1 #Dont forget to unnormalize the results
                 regression_diff = torch.abs(targets_reg - regression)
+                regression_loss = torch.where(torch.le(regression_diff, 1.0 / 9.0), 0.5 * 9.0 * torch.pow(regression_diff, 2), regression_diff - 0.5 / 9.0)
 
-                regression_loss = torch.where(
-                    torch.le(regression_diff, 1.0 / 9.0),
-                    0.5 * 9.0 * torch.pow(regression_diff, 2),
-                    regression_diff - 0.5 / 9.0
-                )
-
-                regression_loss = torch.where(targets != -1, regression_loss, torch.zeros(regression_loss.shape).cuda())
-                num_regressions_pixels_in_effective_region = num_in_effective_region * 4
-                #compute mean
-            regression_losses.append(regression_loss.sum() / num_regressions_pixels_in_effective_region)
+                regression_loss = torch.where(targets == 1., regression_loss, torch.zeros(regression_loss.shape).cuda())
+                regression_losses.append(regression_loss.mean())
 
 
         return torch.stack(classification_losses).mean(dim=0, keepdim=True), torch.stack(regression_losses).mean(dim=0, keepdim=True)
