@@ -108,16 +108,22 @@ class FocalLoss(nn.Module):
             targets_d_right = torch.ones(regression.shape[0]) * -1
             targets_d_down  = torch.ones(regression.shape[0]) * -1
             targets_d_up    = torch.ones(regression.shape[0]) * -1
+            #map outputs to pyramid level and specific instance id
+            pyramid = torch.ones(regression.shape[0]) * -1
+            instance = torch.ones(regression.shape[0]) * -1
+
 
             targets = targets.cuda()
             targets_d_left = targets_d_left.cuda()
             targets_d_right = targets_d_right.cuda()
             targets_d_down = targets_d_down.cuda()
             targets_d_up = targets_d_up.cuda()
+            pyramid = pyramid.cuda()
+            instance = instance.cuda()
 
             new_feature_idx = np.cumsum([0] + [feature_shapes[pyramid_idx][0] * feature_shapes[pyramid_idx][1] for pyramid_idx in range(len(pyramid_levels))])
 
-            for pyramid_idx in range(len(pyramid_levels) - 1):
+            for pyramid_idx in range(len(pyramid_levels)):
                 #create indices for looping over features
                 next_feature_index = int(new_feature_idx[pyramid_idx + 1])
                 last_feature_idx   = int(new_feature_idx[pyramid_idx])
@@ -126,10 +132,10 @@ class FocalLoss(nn.Module):
 
                 #Fill up ignoring boxes with -1
                 for box in ignoring_boxes:
-                    x_indices_inside_igbox = (x_grid_order[feature_indices] > (box[pyramid_idx][0] + 1).cuda().long()) * (
-                                                x_grid_order[feature_indices] < (box[pyramid_idx][2]).cuda().long())
-                    y_indices_inside_igbox = (y_grid_order[feature_indices] > (box[pyramid_idx][1] + 1).cuda().long()) * (
-                                                y_grid_order[feature_indices] < (box[pyramid_idx][3]).cuda().long())
+                    x_indices_inside_igbox = (x_grid_order[feature_indices] >= (box[pyramid_idx][0] + 1).cuda().long()) * (
+                                                x_grid_order[feature_indices] <= (box[pyramid_idx][2]).cuda().long())
+                    y_indices_inside_igbox = (y_grid_order[feature_indices] >= (box[pyramid_idx][1] + 1).cuda().long()) * (
+                                                y_grid_order[feature_indices] <= (box[pyramid_idx][3]).cuda().long())
 
                     #only return indices where both x and y coordinates are inside ignoring box
                     pixel_indices_inside_igbox = x_indices_inside_igbox * y_indices_inside_igbox#THIS IS NOT AN INDEX!!!
@@ -146,10 +152,10 @@ class FocalLoss(nn.Module):
 
                 #Fill up effective boxes with 1
                 for i, box in enumerate(effective_boxes):
-                    x_indices_inside_effbox = (x_grid_order[feature_indices] > (box[pyramid_idx][0] + 1).cuda().long()) * (
-                                                x_grid_order[feature_indices] < (box[pyramid_idx][2]).cuda().long())
-                    y_indices_inside_effbox = (y_grid_order[feature_indices] > (box[pyramid_idx][1] + 1).cuda().long()) * (
-                                                y_grid_order[feature_indices] < (box[pyramid_idx][3]).cuda().long())
+                    x_indices_inside_effbox = (x_grid_order[feature_indices] >= (box[pyramid_idx][0] + 1).cuda().long()) * (
+                                                x_grid_order[feature_indices] <= (box[pyramid_idx][2]).cuda().long())
+                    y_indices_inside_effbox = (y_grid_order[feature_indices] >= (box[pyramid_idx][1] + 1).cuda().long()) * (
+                                                y_grid_order[feature_indices] <= (box[pyramid_idx][3]).cuda().long())
 
                     #only return indices where both x and y coordinates are inside effective box
                     bool_pixel_indices_inside_effbox = x_indices_inside_effbox * y_indices_inside_effbox
@@ -172,6 +178,11 @@ class FocalLoss(nn.Module):
                     targets_d_right[combined_indices] = projections_for_single_box[pyramid_idx][2].cuda() - x_grid_order[combined_indices].float()
                     targets_d_down[combined_indices]  = y_grid_order[combined_indices].float() - projections_for_single_box[pyramid_idx][1].cuda()
                     targets_d_up[combined_indices]    = projections_for_single_box[pyramid_idx][3].cuda() - y_grid_order[combined_indices].float()
+
+                    #note: pyramid could have been computed at the beginning with new_feature_idx, but I prefer to do it here as a fail safe,
+                    #to make sure there aren't any bugs in the code.
+                    pyramid[combined_indices]         = pyramid_idx + 3
+                    instance[combined_indices]        = i
 
                 ######Think about adding acception for smaller objects when they overlap with larger ones....
 
@@ -203,38 +214,53 @@ class FocalLoss(nn.Module):
 
             #assert ((targets_reg < -1.).sum() > 0), 'something isnt right about computing of the target regression values'
 
-
-
-
             #compute indices for effective region
             indices_for_eff_region = (targets == 1.).nonzero()[:,0]
             #only compute regression for effective region
             targets_reg = targets_reg[indices_for_eff_region]
             regression = regression[indices_for_eff_region]
+            pyramid = pyramid[indices_for_eff_region]
+            instance = instance[indices_for_eff_region]
 
             if IOULoss:
                 # normalization constant
                 targets_reg = targets_reg / Snorm #TODO: Dont forget to unnormalize the results
 
-                x_gt   = (targets_reg[:, 2] + targets_reg[:, 3]) * (targets_reg[:, 0] + targets_reg[:, 1])
-                x_pred = (regression[:, 2] + regression[:, 3]) * (regression[:, 0] + regression[:, 1])
+                x_gt   = (targets_reg[:, 2] + targets_reg[:, 3] + 1.) * (targets_reg[:, 0] + targets_reg[:, 1] + 1.)
+                x_pred = (regression[:, 2] + regression[:, 3] + 1.) * (regression[:, 0] + regression[:, 1] + 1.)
 
                 i_h    = torch.where(targets_reg[:, 2] < regression[:, 2], targets_reg[:, 2], regression[:, 2]) + \
-                         torch.where(targets_reg[:, 3] <regression[:, 3], targets_reg[:, 3], regression[:, 3])
+                         torch.where(targets_reg[:, 3] < regression[:, 3], targets_reg[:, 3], regression[:, 3]) + 1.
                 i_w    = torch.where(targets_reg[:, 0] < regression[:, 0], targets_reg[:, 0], regression[:, 0]) + \
-                         torch.where(targets_reg[:, 1] < regression[:, 1], targets_reg[:, 1], regression[:, 1])
+                         torch.where(targets_reg[:, 1] < regression[:, 1], targets_reg[:, 1], regression[:, 1]) + 1.
                 i = i_h * i_w
                 u = x_pred + x_gt - i
                 IOU = i / u
+                IOU = torch.clamp(IOU,1e-4, 1.0 - 1e-4)
                 regression_loss = -torch.log(IOU)
-                regression_losses.append(regression_loss.mean())
+
             else:
                 #targets = targets / 0.1 #Dont forget to unnormalize the results
                 regression_diff = torch.abs(targets_reg - regression)
                 regression_loss = torch.where(torch.le(regression_diff, 1.0 / 9.0), 0.5 * 9.0 * torch.pow(regression_diff, 2), regression_diff - 0.5 / 9.0)
 
-                regression_loss = torch.where(targets == 1., regression_loss, torch.zeros(regression_loss.shape).cuda())
-                regression_losses.append(regression_loss.mean())
+            losses_for_all_instances = 0.
+            for unique_instance in torch.unique(instance):
+                loss_for_this_instance = 1.
+                for level in pyramid_levels:
+                    bool_indices_for_pyramid_level = (pyramid == level)
+                    bool_indices_for_instance = (instance == unique_instance)
+
+                    combined_bool_indices = bool_indices_for_pyramid_level * bool_indices_for_instance
+                    combined__indices = combined_bool_indices.nonzero()
+
+                    reg_loss_per_instance_per_pyramid_level = regression_loss[combined__indices]
+
+                    loss_for_this_instance = loss_for_this_instance * reg_loss_per_instance_per_pyramid_level.mean()
+
+                losses_for_all_instances = losses_for_all_instances + loss_for_this_instance
+
+            regression_losses.append(losses_for_all_instances)
 
 
         return torch.stack(classification_losses).mean(dim=0, keepdim=True), torch.stack(regression_losses).mean(dim=0, keepdim=True)
