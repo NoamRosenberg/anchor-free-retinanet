@@ -229,9 +229,11 @@ class FocalLoss(nn.Module):
 
             pyramid = pyramid[indices_for_eff_region]
             instance = instance[indices_for_eff_region]
-            #retreive pixels from classification branch that are in the effective region
+            #retreive pixels from classification branch that are in the effective region and then in rest region
             class_indices_for_eff_region = (targets == 1.).nonzero()
+            class_indices_for_rest_region = (targets == 0.).nonzero()
             eff_cls_loss = cls_loss[class_indices_for_eff_region[:,0],class_indices_for_eff_region[:,1]]
+            rest_cls_loss = cls_loss[class_indices_for_rest_region[:,0], class_indices_for_rest_region[:,1]]
 
             #compute loss for each pixel
             if IOULoss:
@@ -256,7 +258,7 @@ class FocalLoss(nn.Module):
                 regression_diff = torch.abs(targets_reg - regression)
                 regression_loss = torch.where(torch.le(regression_diff, 1.0 / 9.0), 0.5 * 9.0 * torch.pow(regression_diff, 2), regression_diff - 0.5 / 9.0)
 
-            losses_for_all_instances = 0.
+            loss_for_all_instances = 0.
             for unique_instance in torch.unique(instance):
                 loss_for_this_instance = 1.
                 for level in pyramid_levels:
@@ -274,9 +276,11 @@ class FocalLoss(nn.Module):
 
                     loss_for_this_instance = loss_for_this_instance * loss_per_instance_per_pyramid_level
 
-                losses_for_all_instances = losses_for_all_instances + loss_for_this_instance
+                loss_for_all_instances = loss_for_all_instances + loss_for_this_instance
+            #add the loss for 
+            loss_for_all_instances + rest_cls_loss
 
-            regression_losses.append(losses_for_all_instances)
+            regression_losses.append(loss_for_all_instances)
 
 
         return torch.stack(classification_losses).mean(dim=0, keepdim=True), torch.stack(regression_losses).mean(dim=0, keepdim=True)
