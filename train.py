@@ -126,17 +126,15 @@ def main(args=None):
 			try:
 				optimizer.zero_grad()
 
-				classification_loss, regression_loss = retinanet([data['img'].cuda().float(), data['annot']])
+				per_picture_loss = retinanet([data['img'].cuda().float(), data['annot']])
 
-				classification_loss = classification_loss.mean()
-				regression_loss = regression_loss.mean()
 
-				loss = classification_loss + regression_loss
+				batch_loss = per_picture_loss.mean()
 				
 				if bool(loss == 0):
 					continue
 
-				loss.backward()
+				batch_loss.backward()
 
 				torch.nn.utils.clip_grad_norm_(retinanet.parameters(), 0.1)
 

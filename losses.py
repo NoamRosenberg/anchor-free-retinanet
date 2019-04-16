@@ -28,10 +28,12 @@ class FocalLoss(nn.Module):
         alpha = 0.25
         gamma = 2.0
         Snorm = 4.0
+        RestNorm = 1.0
         IOULoss = True
         batch_size = classifications.shape[0]
         classification_losses = []
         regression_losses = []
+        losses = []
 
 
 
@@ -278,11 +280,11 @@ class FocalLoss(nn.Module):
 
                 loss_for_all_instances = loss_for_all_instances + loss_for_this_instance
             #add the loss for
-            loss_for_all_instances + rest_cls_loss.mean()
+            total_loss = loss_for_all_instances + rest_cls_loss.mean() * RestNorm
 
-            regression_losses.append(loss_for_all_instances)
+            losses.append(total_loss)
 
 
-        return torch.stack(classification_losses).mean(dim=0, keepdim=True), torch.stack(regression_losses).mean(dim=0, keepdim=True)
+        return torch.stack(losses)
 
     
