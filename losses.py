@@ -66,6 +66,7 @@ class FocalLoss(nn.Module):
             effective_box          = torch.ones(len(pyramid_levels),5)*-1
             ignoring_box           = torch.ones(len(pyramid_levels),5)*-1
             for single_annotation_box in bbox_annotation:
+                #TODO: make sure this equation is correct
                 single_box_projections[:,:4] = torch.stack([(single_annotation_box[:4] + 2 ** x - 1) // (2 ** x) for x in pyramid_levels])### NOT SURE IF THIS IS ACCURATE
 
                 #set classes for boxes
@@ -152,13 +153,17 @@ class FocalLoss(nn.Module):
 
                 #Fill up effective boxes with 1
                 for i, box in enumerate(effective_boxes):
-                    x_indices_inside_effbox = (x_grid_order[feature_indices] >= (box[pyramid_idx][0] + 1).cuda().long()) * (
-                                                x_grid_order[feature_indices] <= (box[pyramid_idx][2]).cuda().long())
-                    y_indices_inside_effbox = (y_grid_order[feature_indices] >= (box[pyramid_idx][1] + 1).cuda().long()) * (
-                                                y_grid_order[feature_indices] <= (box[pyramid_idx][3]).cuda().long())
+                    x_indices_inside_effbox = (x_grid_order[feature_indices] >= (box[pyramid_idx][0]).cuda().long()) * (
+                                                x_grid_order[feature_indices] <= (box[pyramid_idx][2] + 1.).cuda().long())
+                    y_indices_inside_effbox = (y_grid_order[feature_indices] >= (box[pyramid_idx][1]).cuda().long()) * (
+                                                y_grid_order[feature_indices] <= (box[pyramid_idx][3] + 1.).cuda().long())
 
                     #only return indices where both x and y coordinates are inside effective box
                     bool_pixel_indices_inside_effbox = x_indices_inside_effbox * y_indices_inside_effbox
+
+                    #assert (bool_pixel_indices_inside_effbox.sum() > 0), "this effective box isnt being counted" + str(box[pyramid_idx]) + " instance:" + str(i) + " pyramid:" + str(pyramid_idx + 3)
+                    if bool_pixel_indices_inside_effbox.sum().item() == 0:
+                        print("number of pixels inside effective box: " + str(bool_pixel_indices_inside_effbox.sum().item()), ", box:", str(i), ", pyramid idx:", str(pyramid_idx))
                     #compute class
                     box_class = box[0, 4].long()
                     # from bool indices to regular indices
@@ -201,7 +206,9 @@ class FocalLoss(nn.Module):
             cls_loss = torch.where(torch.ne(targets, -1.0), cls_loss, torch.zeros(cls_loss.shape).cuda())
             #Normalize with number of pixels in effective region
             num_in_effective_region = (targets == 1.).sum()
-            classification_losses.append(cls_loss.sum()/torch.clamp(num_in_effective_region.float(), min=1.0))
+
+            norm_sum_cls_loss = cls_loss.sum()/torch.clamp(num_in_effective_region.float(), min=1.0)
+            classification_losses.append(norm_sum_cls_loss)
 
             # compute the loss for regression
 
@@ -219,9 +226,14 @@ class FocalLoss(nn.Module):
             #only compute regression for effective region
             targets_reg = targets_reg[indices_for_eff_region]
             regression = regression[indices_for_eff_region]
+
             pyramid = pyramid[indices_for_eff_region]
             instance = instance[indices_for_eff_region]
+            #retreive pixels from classification branch that are in the effective region
+            class_indices_for_eff_region = (targets == 1.).nonzero()
+            eff_cls_loss = cls_loss[class_indices_for_eff_region[:,0],class_indices_for_eff_region[:,1]]
 
+            #compute loss for each pixel
             if IOULoss:
                 # normalization constant
                 targets_reg = targets_reg / Snorm #TODO: Dont forget to unnormalize the results
@@ -252,11 +264,15 @@ class FocalLoss(nn.Module):
                     bool_indices_for_instance = (instance == unique_instance)
 
                     combined_bool_indices = bool_indices_for_pyramid_level * bool_indices_for_instance
-                    combined__indices = combined_bool_indices.nonzero()
-
+                    if combined_bool_indices.sum() == 0.:
+                        continue
+                    combined__indices = combined_bool_indices.nonzero().view(-1)
                     reg_loss_per_instance_per_pyramid_level = regression_loss[combined__indices]
+                    cls_loss_per_instance_per_pyramid_level = eff_cls_loss[combined_indices]
+                    assert(reg_loss_per_instance_per_pyramid_level.mean() > 0),  "weird, instance:" + str(unique_instance.item()) + " and pyramid:" + str(level) + "have regression mean zero"
+                    loss_per_instance_per_pyramid_level = reg_loss_per_instance_per_pyramid_level.mean() + cls_loss_per_instance_per_pyramid_level.mean()
 
-                    loss_for_this_instance = loss_for_this_instance * reg_loss_per_instance_per_pyramid_level.mean()
+                    loss_for_this_instance = loss_for_this_instance * loss_per_instance_per_pyramid_level
 
                 losses_for_all_instances = losses_for_all_instances + loss_for_this_instance
 
