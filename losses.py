@@ -164,8 +164,8 @@ class FocalLoss(nn.Module):
                     bool_pixel_indices_inside_effbox = x_indices_inside_effbox * y_indices_inside_effbox
 
                     #assert (bool_pixel_indices_inside_effbox.sum() > 0), "this effective box isnt being counted" + str(box[pyramid_idx]) + " instance:" + str(i) + " pyramid:" + str(pyramid_idx + 3)
-                    if bool_pixel_indices_inside_effbox.sum().item() == 0:
-                        print("number of pixels inside effective box: " + str(bool_pixel_indices_inside_effbox.sum().item()), ", box:", str(i), ", pyramid idx:", str(pyramid_idx))
+                    #if bool_pixel_indices_inside_effbox.sum().item() == 0:
+                        #print("number of pixels inside effective box: " + str(bool_pixel_indices_inside_effbox.sum().item()), ", box:", str(i), ", pyramid idx:", str(pyramid_idx))
                     #compute class
                     box_class = box[0, 4].long()
                     # from bool indices to regular indices
@@ -260,7 +260,8 @@ class FocalLoss(nn.Module):
                 regression_diff = torch.abs(targets_reg - regression)
                 regression_loss = torch.where(torch.le(regression_diff, 1.0 / 9.0), 0.5 * 9.0 * torch.pow(regression_diff, 2), regression_diff - 0.5 / 9.0)
 
-            loss_for_all_instances = 0.
+
+            loss_for_this_instance_ls = []
             for unique_instance in torch.unique(instance):
                 loss_for_this_instance = 1.
                 for level in pyramid_levels:
@@ -277,10 +278,9 @@ class FocalLoss(nn.Module):
                     loss_per_instance_per_pyramid_level = reg_loss_per_instance_per_pyramid_level.mean() + cls_loss_per_instance_per_pyramid_level.mean()
 
                     loss_for_this_instance = loss_for_this_instance * loss_per_instance_per_pyramid_level
-
-                loss_for_all_instances = loss_for_all_instances + loss_for_this_instance
-            #add the loss for
-            total_loss = loss_for_all_instances + rest_cls_loss.mean() * RestNorm
+                loss_for_this_instance_ls.append(loss_for_this_instance)
+                loss_for_these_instances = torch.stack(loss_for_this_instance_ls)
+            total_loss = loss_for_these_instances.mean() + rest_cls_loss.mean() * RestNorm
 
             losses.append(total_loss)
 

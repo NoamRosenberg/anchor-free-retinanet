@@ -271,8 +271,7 @@ class ResNet(nn.Module):
         if self.training:
             return self.focalLoss(classification, regression, annotations, img_batch, x_grid_order, y_grid_order)
         else:
-            transformed_anchors = self.regressBoxes(anchors, regression)
-            transformed_anchors = self.clipBoxes(transformed_anchors, img_batch)
+
 
             scores = torch.max(classification, dim=2, keepdim=True)[0]
 
@@ -283,7 +282,7 @@ class ResNet(nn.Module):
                 return [torch.zeros(0), torch.zeros(0), torch.zeros(0, 4)]
 
             classification = classification[:, scores_over_thresh, :]
-            transformed_anchors = transformed_anchors[:, scores_over_thresh, :]
+
             scores = scores[:, scores_over_thresh, :]
 
             anchors_nms_idx = nms(torch.cat([transformed_anchors, scores], dim=2)[0, :, :], 0.5)

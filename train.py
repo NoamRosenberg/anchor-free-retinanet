@@ -121,9 +121,10 @@ def main(args=None):
 		retinanet.module.freeze_bn()
 		
 		epoch_loss = []
-		
+
 		for iter_num, data in enumerate(dataloader_train):
 			try:
+				iter_loss = []
 				optimizer.zero_grad()
 
 				per_picture_loss = retinanet([data['img'].cuda().float(), data['annot']])
@@ -131,7 +132,7 @@ def main(args=None):
 
 				batch_loss = per_picture_loss.mean()
 				
-				if bool(loss == 0):
+				if bool(batch_loss == 0):
 					continue
 
 				batch_loss.backward()
@@ -140,14 +141,14 @@ def main(args=None):
 
 				optimizer.step()
 
-				loss_hist.append(float(loss))
+				loss_hist.append(float(batch_loss))
 
-				epoch_loss.append(float(loss))
-
-				print('Epoch: {} | Iteration: {} | Classification loss: {:1.5f} | Regression loss: {:1.5f} | Running loss: {:1.5f}'.format(epoch_num, iter_num, float(classification_loss), float(regression_loss), np.mean(loss_hist)))
+				epoch_loss.append(float(batch_loss))
+				iter_loss.append(float(batch_loss))
+				if iter_num % 10 == 0:
+					print('Epoch: {} | Iteration: {} | Loss: {:1.5f} | Running loss: {:1.5f}'.format(epoch_num, iter_num, np.mean(iter_loss), np.mean(loss_hist)))
 				
-				del classification_loss
-				del regression_loss
+				del batch_loss
 			except Exception as e:
 				print(e)
 				continue
