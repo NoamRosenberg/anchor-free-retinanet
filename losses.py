@@ -268,17 +268,17 @@ class FocalLoss(nn.Module):
                     combined_bool_indices = bool_indices_for_pyramid_level * bool_indices_for_instance
                     if combined_bool_indices.sum() == 0.:
                         continue
-                    combined__indices = combined_bool_indices.nonzero().view(-1)
-                    reg_loss_per_instance_per_pyramid_level = regression_loss[combined__indices]
-                    cls_loss_per_instance_per_pyramid_level = eff_cls_loss[combined_indices]
+                    comb_indices = combined_bool_indices.nonzero().view(-1)
+                    reg_loss_per_instance_per_pyramid_level = regression_loss[comb_indices]
+                    cls_loss_per_instance_per_pyramid_level = eff_cls_loss[comb_indices]
                     assert(reg_loss_per_instance_per_pyramid_level.mean() > 0),  "weird, instance:" + str(unique_instance.item()) + " and pyramid:" + str(level) + "have regression mean zero"
                     loss_per_instance_per_pyramid_level = reg_loss_per_instance_per_pyramid_level.mean() + cls_loss_per_instance_per_pyramid_level.mean()
 
                     loss_for_this_instance = loss_for_this_instance * loss_per_instance_per_pyramid_level
 
                 loss_for_all_instances = loss_for_all_instances + loss_for_this_instance
-            #add the loss for 
-            loss_for_all_instances + rest_cls_loss
+            #add the loss for
+            loss_for_all_instances + rest_cls_loss.mean()
 
             regression_losses.append(loss_for_all_instances)
 
