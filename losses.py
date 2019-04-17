@@ -241,7 +241,7 @@ class FocalLoss(nn.Module):
             if IOULoss:
                 # normalization constant
                 targets_reg = targets_reg / Snorm #TODO: Dont forget to unnormalize the results
-
+                #TODO: MAKE SURE AREA IS CALCULATED RIGHT a + b + 1
                 x_gt   = (targets_reg[:, 2] + targets_reg[:, 3] + 1.) * (targets_reg[:, 0] + targets_reg[:, 1] + 1.)
                 x_pred = (regression[:, 2] + regression[:, 3] + 1.) * (regression[:, 0] + regression[:, 1] + 1.)
 

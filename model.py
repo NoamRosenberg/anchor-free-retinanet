@@ -274,22 +274,27 @@ class ResNet(nn.Module):
 
 
             scores = torch.max(classification, dim=2, keepdim=True)[0]
-
+            #TODO:account for batch bellow?
             scores_over_thresh = (scores>0.05)[0, :, 0]
 
-            if scores_over_thresh.sum() == 0:
+            #if scores_over_thresh.sum() == 0:
                 # no boxes to NMS, just return
-                return [torch.zeros(0), torch.zeros(0), torch.zeros(0, 4)]
+                #return [torch.zeros(0), torch.zeros(0), torch.zeros(0, 4)]
 
             classification = classification[:, scores_over_thresh, :]
 
             scores = scores[:, scores_over_thresh, :]
+            box_prediction = torch.ones(regression.shape) * -1
+            box_prediction[:, 0] = x_grid_order - regression[:, 0]
+            box_prediction[:, 2] = x_grid_order + regression[:, 1]
+            box_prediction[:, 1] = y_grid_order - regression[:, 2]
+            box_prediction[:, 3] = y_grid_order + regression[:, 3]
 
-            anchors_nms_idx = nms(torch.cat([transformed_anchors, scores], dim=2)[0, :, :], 0.5)
+            anchors_nms_idx = nms(torch.cat([box_prediction, scores], dim=2)[0, :, :], 0.5)
 
             nms_scores, nms_class = classification[0, anchors_nms_idx, :].max(dim=1)
 
-            return [nms_scores, nms_class, transformed_anchors[0, anchors_nms_idx, :]]
+            return [nms_scores, nms_class, regression[0, anchors_nms_idx, :]]
 
 
 
