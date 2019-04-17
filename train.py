@@ -47,7 +47,6 @@ def main(args=None):
 
 	# Create the data loaders
 	if parser.dataset == 'coco':
-
 		if parser.coco_path is None:
 			raise ValueError('Must provide --coco_path when training on COCO,')
 
@@ -55,16 +54,11 @@ def main(args=None):
 		dataset_val = CocoDataset(parser.coco_path, set_name='val2017', transform=transforms.Compose([Normalizer(), Resizer()]))
 
 	elif parser.dataset == 'csv':
-
 		if parser.csv_train is None:
 			raise ValueError('Must provide --csv_train when training on COCO,')
-
 		if parser.csv_classes is None:
 			raise ValueError('Must provide --csv_classes when training on COCO,')
-
-
 		dataset_train = CSVDataset(train_file=parser.csv_train, class_list=parser.csv_classes, transform=transforms.Compose([Normalizer(), Augmenter(), Resizer()]))
-
 		if parser.csv_val is None:
 			dataset_val = None
 			print('No validation annotations provided.')
@@ -79,7 +73,7 @@ def main(args=None):
 
 	if dataset_val is not None:
 		sampler_val = AspectRatioBasedSampler(dataset_val, batch_size=1, drop_last=False)
-		dataloader_val = DataLoader(dataset_val, num_workers=1, collate_fn=collater, batch_sampler=sampler_val)
+		dataloader_val = DataLoader(dataset_val, num_workers=0, collate_fn=collater, batch_sampler=sampler_val)
 
 	# Create the model
 	if parser.depth == 18:
@@ -147,9 +141,7 @@ def main(args=None):
 				iter_loss.append(float(batch_loss))
 				if iter_num % 10 == 0:
 					print('Epoch: {} | Iteration: {} | Loss: {:1.5f} | Running loss: {:1.5f}'.format(epoch_num, iter_num, np.mean(iter_loss), np.mean(loss_hist)))
-					print('Evaluating dataset')
 					coco_eval.evaluate_coco(dataset_val, retinanet)
-				
 				del batch_loss
 			except Exception as e:
 				print(e)

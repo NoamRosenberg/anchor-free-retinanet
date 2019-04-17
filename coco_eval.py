@@ -12,7 +12,7 @@ import torch
 def evaluate_coco(dataset, model, threshold=0.05):
     
     model.eval()
-    
+
     with torch.no_grad():
 
         # start collecting results
@@ -22,9 +22,10 @@ def evaluate_coco(dataset, model, threshold=0.05):
         for index in range(len(dataset)):
             data = dataset[index]
             scale = data['scale']
-
             # run network
-            scores, labels, boxes = model(data['img'].permute(2, 0, 1).cuda().float().unsqueeze(dim=0))
+            print(index)
+            image = data['img'].permute(2, 0, 1).cuda().float().unsqueeze(dim=0)
+            scores, labels, boxes = model(image)
             scores = scores.cpu()
             labels = labels.cpu()
             boxes  = boxes.cpu()

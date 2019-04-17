@@ -267,7 +267,9 @@ class ResNet(nn.Module):
 #        assert classification.shape[1] == x_grid_order[0] == y_grid_order[0], 'not same shape'
 #        assert classification.shape[2] == x_grid_order[1] == y_grid_order[1], 'not same shape'
 
-
+        #TODO: unormalize regression
+        #TODO: projection box to real box?
+        #TODO:
         if self.training:
             return self.focalLoss(classification, regression, annotations, img_batch, x_grid_order, y_grid_order)
         else:
@@ -277,24 +279,30 @@ class ResNet(nn.Module):
             #TODO:account for batch bellow?
             scores_over_thresh = (scores>0.05)[0, :, 0]
 
-            #if scores_over_thresh.sum() == 0:
+            if scores_over_thresh.sum() == 0:
                 # no boxes to NMS, just return
-                #return [torch.zeros(0), torch.zeros(0), torch.zeros(0, 4)]
+                return [torch.zeros(0), torch.zeros(0), torch.zeros(0, 4)]
+
+            #compute [x1, y1, x2, y2] from [left, right, bottom, top]
+            box_prediction = torch.ones(regression.shape) * -1
+            box_prediction = box_prediction.cuda()
+            box_prediction[0, :, 0] = x_grid_order.float() - regression[0, :, 0]
+            box_prediction[0, :, 2] = x_grid_order.float() + regression[0, :, 1]
+            box_prediction[0, :, 1] = y_grid_order.float() - regression[0, :, 2]
+            box_prediction[0, :, 3] = y_grid_order.float() + regression[0, :, 3]
 
             classification = classification[:, scores_over_thresh, :]
+            scores         = scores[:, scores_over_thresh, :]
+            box_prediction = box_prediction[:, scores_over_thresh, :]
 
-            scores = scores[:, scores_over_thresh, :]
-            box_prediction = torch.ones(regression.shape) * -1
-            box_prediction[:, 0] = x_grid_order - regression[:, 0]
-            box_prediction[:, 2] = x_grid_order + regression[:, 1]
-            box_prediction[:, 1] = y_grid_order - regression[:, 2]
-            box_prediction[:, 3] = y_grid_order + regression[:, 3]
-
+            #TODO:Compute projection to real box?
             anchors_nms_idx = nms(torch.cat([box_prediction, scores], dim=2)[0, :, :], 0.5)
 
             nms_scores, nms_class = classification[0, anchors_nms_idx, :].max(dim=1)
+            nms_boxes             = box_prediction[0, anchors_nms_idx, :]
 
-            return [nms_scores, nms_class, regression[0, anchors_nms_idx, :]]
+            return [nms_scores, nms_class, nms_boxes]
+
 
 
 
