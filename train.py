@@ -42,6 +42,11 @@ def main(args=None):
 
 	parser.add_argument('--depth', help='Resnet depth, must be one of 18, 34, 50, 101, 152', type=int, default=50)
 	parser.add_argument('--epochs', help='Number of epochs', type=int, default=100)
+	parser.add_argument('--lr', help='learning rate', type=float, default=1e-5)
+	parser.add_argument('--s_norm', help='normalize regression outputs', type=float, default=4.0)
+	parser.add_argument('--t_val', help='sensitivity of per pyramid loss', type=float, default=2.0)
+	parser.add_argument('--IOU', help='IoU loss or regular regression loss', type=int, default=1)
+	parser.add_argument('--rest_norm', help='weight for rest region, i.e. not effective region', type=float, default=1.0)
 
 	parser = parser.parse_args(args)
 
@@ -69,11 +74,11 @@ def main(args=None):
 		raise ValueError('Dataset type not understood (must be csv or coco), exiting.')
 
 	sampler = AspectRatioBasedSampler(dataset_train, batch_size=2, drop_last=False)
-	dataloader_train = DataLoader(dataset_train, num_workers=1, collate_fn=collater, batch_sampler=sampler)
+	dataloader_train = DataLoader(dataset_train, num_workers=0, collate_fn=collater, batch_sampler=sampler)
 
 	if dataset_val is not None:
 		sampler_val = AspectRatioBasedSampler(dataset_val, batch_size=1, drop_last=False)
-		dataloader_val = DataLoader(dataset_val, num_workers=1, collate_fn=collater, batch_sampler=sampler_val)
+		dataloader_val = DataLoader(dataset_val, num_workers=0, collate_fn=collater, batch_sampler=sampler_val)
 
 	# Create the model
 	if parser.depth == 18:
@@ -98,7 +103,7 @@ def main(args=None):
 
 	retinanet.training = True
 
-	optimizer = optim.Adam(retinanet.parameters(), lr=1e-5)
+	optimizer = optim.Adam(retinanet.parameters(), lr=parser.lr)
 
 	scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True)
 
@@ -121,7 +126,7 @@ def main(args=None):
 				iter_loss = []
 				optimizer.zero_grad()
 
-				per_picture_loss, follow_ = retinanet([data['img'].cuda().float(), data['annot']])
+				per_picture_loss, follow_ = retinanet([data['img'].cuda().float(), data['annot']], parser)
 
 
 				batch_loss = per_picture_loss.mean()
@@ -144,7 +149,6 @@ def main(args=None):
 				if iter_num % 10 == 0:
 					print('Epoch: {} | Iteration: {} | Loss: {:1.5f} | Running loss: {:1.5f} | py_losses: {} | prod: {}'
 						  .format(epoch_num, iter_num, np.mean(iter_loss), np.mean(loss_hist), follow_[0], round(instance_loss,3)))
-					#coco_eval.evaluate_coco(dataset_val, retinanet)
 				del batch_loss
 			except Exception as e:
 				print(e)
@@ -162,11 +166,11 @@ def main(args=None):
 		
 		scheduler.step(np.mean(epoch_loss))	
 
-		torch.save(retinanet.module, '{}_retinanet_{}.pt'.format(parser.dataset, epoch_num))
+		torch.save(retinanet.module, '{}_retinanet_{}_snorm_{}_tval_{}_restnorm_{}_IOU_{}.pt'.format(parser.dataset, epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.IOU))
 
 	retinanet.eval()
 
-	torch.save(retinanet, 'model_final.pt'.format(epoch_num))
+	torch.save(retinanet, 'model_final_{}_snorm_{}_tval_{}_restnorm_{}_IOU_{}.pt'.format(epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.IOU))
 
 if __name__ == '__main__':
  main()

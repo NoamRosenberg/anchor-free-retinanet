@@ -24,11 +24,13 @@ def calc_iou(a, b):
 class FocalLoss(nn.Module):
     #def __init__(self):
 
-    def forward(self, classifications, regressions, annotations, image, x_grid_order, y_grid_order, pyramid_reset, s_norm=4.0):
+    def forward(self, classifications, regressions, annotations, image, x_grid_order, y_grid_order, pyramid_reset, args):
         alpha = 0.25
         gamma = 2.0
-        rest_norm = 1.0
-        IOULoss = True
+        rest_norm = args.rest_norm
+        s_norm = args.s_norm
+        t_val = args.t_val #This value controls the Lnorm of the per pyramid loss (for a single instance)
+        IOULoss = bool(args.IOU)
         batch_size = classifications.shape[0]
         classification_losses = []
         regression_losses = []
@@ -233,8 +235,8 @@ class FocalLoss(nn.Module):
             #compute loss for each pixel
             if IOULoss:
                 # normalization constant
-                targets_reg = targets_reg / s_norm #TODO: Dont forget to unnormalize the results
-                #TODO: MAKE SURE AREA IS CALCULATED RIGHT a + b + 1
+                targets_reg = targets_reg / s_norm
+
                 x_gt   = (targets_reg[:, 2] + targets_reg[:, 3] + 1.) * (targets_reg[:, 0] + targets_reg[:, 1] + 1.)
                 x_pred = (regression[:, 2] + regression[:, 3] + 1.) * (regression[:, 0] + regression[:, 1] + 1.)
 
@@ -274,7 +276,7 @@ class FocalLoss(nn.Module):
                     loss_per_instance_per_pyramid_level = reg_loss_per_instance_per_pyramid_level.mean() + cls_loss_per_instance_per_pyramid_level.mean()
                     #TODO: THIS LOSS
                     follow_loss.append(round(loss_per_instance_per_pyramid_level.item(),2))
-                    loss_for_this_instance = loss_for_this_instance * (loss_per_instance_per_pyramid_level ** 2)
+                    loss_for_this_instance = loss_for_this_instance * (loss_per_instance_per_pyramid_level ** t_val)
 
                 torch.prod(loss_for_this_instance)
                 loss_for_this_instance_ls.append(loss_for_this_instance)

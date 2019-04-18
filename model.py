@@ -231,7 +231,7 @@ class ResNet(nn.Module):
             if isinstance(layer, nn.BatchNorm2d):
                 layer.eval()
 
-    def forward(self, inputs):
+    def forward(self, inputs, parser):
 
         if self.training:
             img_batch, annotations = inputs
@@ -281,9 +281,9 @@ class ResNet(nn.Module):
 
 
         #TODO:
-        s_norm = 4.0
+
         if self.training:
-            return self.focalLoss(classification, regression, annotations, img_batch, x_grid_order, y_grid_order, pyramid, s_norm)
+            return self.focalLoss(classification, regression, annotations, img_batch, x_grid_order, y_grid_order, pyramid, parser)
         else:
 
 
@@ -296,7 +296,7 @@ class ResNet(nn.Module):
                 return [torch.zeros(0), torch.zeros(0), torch.zeros(0, 4)]
 
             #fix regression coordinates
-            regression = regression * s_norm
+            regression = regression * parser.s_norm
 
 
             #compute [x1, y1, x2, y2] from [left, right, bottom, top]
