@@ -24,11 +24,10 @@ def calc_iou(a, b):
 class FocalLoss(nn.Module):
     #def __init__(self):
 
-    def forward(self, classifications, regressions, annotations, image, x_grid_order, y_grid_order):
+    def forward(self, classifications, regressions, annotations, image, x_grid_order, y_grid_order, pyramid_reset, s_norm=4.0):
         alpha = 0.25
         gamma = 2.0
-        Snorm = 4.0
-        RestNorm = 1.0
+        rest_norm = 1.0
         IOULoss = True
         batch_size = classifications.shape[0]
         classification_losses = []
@@ -38,7 +37,7 @@ class FocalLoss(nn.Module):
 
 
         for j in range(batch_size):
-
+            pyramid = pyramid_reset
             classification = classifications[j, :, :]
             regression = regressions[j, :, :]
 
@@ -111,8 +110,7 @@ class FocalLoss(nn.Module):
             targets_d_right = torch.ones(regression.shape[0]) * -1
             targets_d_down  = torch.ones(regression.shape[0]) * -1
             targets_d_up    = torch.ones(regression.shape[0]) * -1
-            #map outputs to pyramid level and specific instance id
-            pyramid = torch.ones(regression.shape[0]) * -1
+            #map instances
             instance = torch.ones(regression.shape[0]) * -1
 
 
@@ -121,7 +119,6 @@ class FocalLoss(nn.Module):
             targets_d_right = targets_d_right.cuda()
             targets_d_down = targets_d_down.cuda()
             targets_d_up = targets_d_up.cuda()
-            pyramid = pyramid.cuda()
             instance = instance.cuda()
 
             new_feature_idx = np.cumsum([0] + [feature_shapes[pyramid_idx][0] * feature_shapes[pyramid_idx][1] for pyramid_idx in range(len(pyramid_levels))])
@@ -130,7 +127,7 @@ class FocalLoss(nn.Module):
                 #create indices for looping over features
                 next_feature_index = int(new_feature_idx[pyramid_idx + 1])
                 last_feature_idx   = int(new_feature_idx[pyramid_idx])
-
+                # TODO: There is a redundancy in this loop take care when have time
                 feature_indices = torch.arange(last_feature_idx, next_feature_index).cuda().long()
 
                 #Fill up ignoring boxes with -1
@@ -186,9 +183,6 @@ class FocalLoss(nn.Module):
                     targets_d_down[combined_indices]  = y_grid_order[combined_indices].float() - projections_for_single_box[pyramid_idx][1].cuda()
                     targets_d_up[combined_indices]    = projections_for_single_box[pyramid_idx][3].cuda() - y_grid_order[combined_indices].float()
 
-                    #note: pyramid could have been computed at the beginning with new_feature_idx, but I prefer to do it here as a fail safe,
-                    #to make sure there aren't any bugs in the code.
-                    pyramid[combined_indices]         = pyramid_idx + 3
                     instance[combined_indices]        = i
 
                 ######Think about adding acception for smaller objects when they overlap with larger ones....
@@ -228,7 +222,6 @@ class FocalLoss(nn.Module):
             #only compute regression for effective region
             targets_reg = targets_reg[indices_for_eff_region]
             regression = regression[indices_for_eff_region]
-
             pyramid = pyramid[indices_for_eff_region]
             instance = instance[indices_for_eff_region]
             #retreive pixels from classification branch that are in the effective region and then in rest region
@@ -240,7 +233,7 @@ class FocalLoss(nn.Module):
             #compute loss for each pixel
             if IOULoss:
                 # normalization constant
-                targets_reg = targets_reg / Snorm #TODO: Dont forget to unnormalize the results
+                targets_reg = targets_reg / s_norm #TODO: Dont forget to unnormalize the results
                 #TODO: MAKE SURE AREA IS CALCULATED RIGHT a + b + 1
                 x_gt   = (targets_reg[:, 2] + targets_reg[:, 3] + 1.) * (targets_reg[:, 0] + targets_reg[:, 1] + 1.)
                 x_pred = (regression[:, 2] + regression[:, 3] + 1.) * (regression[:, 0] + regression[:, 1] + 1.)
@@ -256,14 +249,17 @@ class FocalLoss(nn.Module):
                 regression_loss = -torch.log(IOU)
 
             else:
-                #targets = targets / 0.1 #Dont forget to unnormalize the results
+                #targets_reg = targets_reg / s_norm #in anchors its 0.1
                 regression_diff = torch.abs(targets_reg - regression)
                 regression_loss = torch.where(torch.le(regression_diff, 1.0 / 9.0), 0.5 * 9.0 * torch.pow(regression_diff, 2), regression_diff - 0.5 / 9.0)
 
-
+            #WHERE THE MAGIC HAPPENS
             loss_for_this_instance_ls = []
+            follow_pyramid_losses = []
+
             for unique_instance in torch.unique(instance):
                 loss_for_this_instance = 1.
+                follow_loss = []
                 for level in pyramid_levels:
                     bool_indices_for_pyramid_level = (pyramid == level)
                     bool_indices_for_instance = (instance == unique_instance)
@@ -276,15 +272,20 @@ class FocalLoss(nn.Module):
                     cls_loss_per_instance_per_pyramid_level = eff_cls_loss[comb_indices]
                     assert(reg_loss_per_instance_per_pyramid_level.mean() > 0),  "weird, instance:" + str(unique_instance.item()) + " and pyramid:" + str(level) + "have regression mean zero"
                     loss_per_instance_per_pyramid_level = reg_loss_per_instance_per_pyramid_level.mean() + cls_loss_per_instance_per_pyramid_level.mean()
+                    #TODO: THIS LOSS
+                    follow_loss.append(round(loss_per_instance_per_pyramid_level.item(),2))
+                    loss_for_this_instance = loss_for_this_instance * (loss_per_instance_per_pyramid_level ** 2)
 
-                    loss_for_this_instance = loss_for_this_instance * loss_per_instance_per_pyramid_level
+                torch.prod(loss_for_this_instance)
                 loss_for_this_instance_ls.append(loss_for_this_instance)
                 loss_for_these_instances = torch.stack(loss_for_this_instance_ls)
-            total_loss = loss_for_these_instances.mean() + rest_cls_loss.mean() * RestNorm
+                follow_pyramid_losses.append(follow_loss)
+
+            total_loss = loss_for_these_instances.mean() + rest_cls_loss.mean() * rest_norm
 
             losses.append(total_loss)
 
 
-        return torch.stack(losses)
+        return torch.stack(losses), follow_pyramid_losses
 
     

@@ -1,6 +1,7 @@
 import torch.nn as nn
 import torch
 import math
+import numpy as np
 import time
 import torch.utils.model_zoo as model_zoo
 from utils import BasicBlock, Bottleneck, BBoxTransform, ClipBoxes
@@ -264,14 +265,25 @@ class ResNet(nn.Module):
         x_grid_order = torch.cat(x_grid_ls)
         y_grid_order = torch.cat(y_grid_ls)
 
-#        assert classification.shape[1] == x_grid_order[0] == y_grid_order[0], 'not same shape'
-#        assert classification.shape[2] == x_grid_order[1] == y_grid_order[1], 'not same shape'
+        #compute pyramid
+        pyramid = torch.ones(regression.shape[1]) * -1
+        pyramid = pyramid.cuda()
+        pyramid_levels = [3, 4, 5, 6, 7]
+        image_shape = img_batch.shape[2:]
+        image_shape = np.array(image_shape)
+        feature_shapes = [(image_shape + 2 ** x - 1) // (2 ** x) for x in pyramid_levels]
+        new_feature_idx = np.cumsum([0] + [feature_shapes[pyramid_idx][0] * feature_shapes[pyramid_idx][1] for pyramid_idx in range(len(pyramid_levels))])
+        for pyramid_idx in range(len(pyramid_levels)):
+            # create indices for looping over features
+            next_feature_index = int(new_feature_idx[pyramid_idx + 1])
+            last_feature_idx = int(new_feature_idx[pyramid_idx])
+            pyramid[last_feature_idx: next_feature_index] = pyramid_levels[pyramid_idx]
 
-        #TODO: unormalize regression
-        #TODO: projection box to real box?
+
         #TODO:
+        s_norm = 4.0
         if self.training:
-            return self.focalLoss(classification, regression, annotations, img_batch, x_grid_order, y_grid_order)
+            return self.focalLoss(classification, regression, annotations, img_batch, x_grid_order, y_grid_order, pyramid, s_norm)
         else:
 
 
@@ -283,6 +295,10 @@ class ResNet(nn.Module):
                 # no boxes to NMS, just return
                 return [torch.zeros(0), torch.zeros(0), torch.zeros(0, 4)]
 
+            #fix regression coordinates
+            regression = regression * s_norm
+
+
             #compute [x1, y1, x2, y2] from [left, right, bottom, top]
             box_prediction = torch.ones(regression.shape) * -1
             box_prediction = box_prediction.cuda()
@@ -291,11 +307,16 @@ class ResNet(nn.Module):
             box_prediction[0, :, 1] = y_grid_order.float() - regression[0, :, 2]
             box_prediction[0, :, 3] = y_grid_order.float() + regression[0, :, 3]
 
+
+            for level in pyramid_levels:
+                bool_indices_for_pyramid_level = (pyramid == level)
+                # TODO: Make sure this equation is right
+                box_prediction[0, bool_indices_for_pyramid_level, :] = box_prediction[0, bool_indices_for_pyramid_level, :] * ( 2 ** level)
+
             classification = classification[:, scores_over_thresh, :]
             scores         = scores[:, scores_over_thresh, :]
             box_prediction = box_prediction[:, scores_over_thresh, :]
 
-            #TODO:Compute projection to real box?
             anchors_nms_idx = nms(torch.cat([box_prediction, scores], dim=2)[0, :, :], 0.5)
 
             nms_scores, nms_class = classification[0, anchors_nms_idx, :].max(dim=1)

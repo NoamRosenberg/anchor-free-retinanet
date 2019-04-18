@@ -69,11 +69,11 @@ def main(args=None):
 		raise ValueError('Dataset type not understood (must be csv or coco), exiting.')
 
 	sampler = AspectRatioBasedSampler(dataset_train, batch_size=2, drop_last=False)
-	dataloader_train = DataLoader(dataset_train, num_workers=0, collate_fn=collater, batch_sampler=sampler)
+	dataloader_train = DataLoader(dataset_train, num_workers=1, collate_fn=collater, batch_sampler=sampler)
 
 	if dataset_val is not None:
 		sampler_val = AspectRatioBasedSampler(dataset_val, batch_size=1, drop_last=False)
-		dataloader_val = DataLoader(dataset_val, num_workers=0, collate_fn=collater, batch_sampler=sampler_val)
+		dataloader_val = DataLoader(dataset_val, num_workers=1, collate_fn=collater, batch_sampler=sampler_val)
 
 	# Create the model
 	if parser.depth == 18:
@@ -121,7 +121,7 @@ def main(args=None):
 				iter_loss = []
 				optimizer.zero_grad()
 
-				per_picture_loss = retinanet([data['img'].cuda().float(), data['annot']])
+				per_picture_loss, follow_ = retinanet([data['img'].cuda().float(), data['annot']])
 
 
 				batch_loss = per_picture_loss.mean()
@@ -134,14 +134,17 @@ def main(args=None):
 				torch.nn.utils.clip_grad_norm_(retinanet.parameters(), 0.1)
 
 				optimizer.step()
-
-				loss_hist.append(float(batch_loss))
+				if iter_num > 100:
+					loss_hist.append(float(batch_loss))
 
 				epoch_loss.append(float(batch_loss))
 				iter_loss.append(float(batch_loss))
+				#example of pyramid losses
+				instance_loss = np.prod(follow_[0])
 				if iter_num % 10 == 0:
-					print('Epoch: {} | Iteration: {} | Loss: {:1.5f} | Running loss: {:1.5f}'.format(epoch_num, iter_num, np.mean(iter_loss), np.mean(loss_hist)))
-					coco_eval.evaluate_coco(dataset_val, retinanet)
+					print('Epoch: {} | Iteration: {} | Loss: {:1.5f} | Running loss: {:1.5f} | py_losses: {} | prod: {}'
+						  .format(epoch_num, iter_num, np.mean(iter_loss), np.mean(loss_hist), follow_[0], round(instance_loss,3)))
+					#coco_eval.evaluate_coco(dataset_val, retinanet)
 				del batch_loss
 			except Exception as e:
 				print(e)
