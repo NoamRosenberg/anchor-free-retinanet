@@ -157,7 +157,7 @@ def main(args=None):
 		if parser.dataset == 'coco':
 
 			print('Evaluating dataset')
-			coco_eval.evaluate_coco(dataset_val, retinanet)
+			coco_eval.evaluate_coco(dataset_val, retinanet, parser)
 
 		elif parser.dataset == 'csv' and parser.csv_val is not None:
 			print('Evaluating dataset')
@@ -166,11 +166,11 @@ def main(args=None):
 		
 		scheduler.step(np.mean(epoch_loss))	
 
-		torch.save(retinanet.module, '{}_retinanet_{}_snorm_{}_tval_{}_restnorm_{}_IOU_{}.pt'.format(parser.dataset, epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.IOU))
+		torch.save(retinanet.module, os.path.join('/data/deeplearning/dataset/training/data/newLossRes','{}_retinanet_{}_snorm_{}_tval_{}_restnorm_{}_IOU_{}.pt'.format(parser.dataset, epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.IOU)))
 
 	retinanet.eval()
 
-	torch.save(retinanet, 'model_final_{}_snorm_{}_tval_{}_restnorm_{}_IOU_{}.pt'.format(epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.IOU))
+	torch.save(retinanet, os.path.join('/data/deeplearning/dataset/training/data/newLossRes','model_final_{}_snorm_{}_tval_{}_restnorm_{}_IOU_{}.pt'.format(epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.IOU)))
 
 if __name__ == '__main__':
  main()
