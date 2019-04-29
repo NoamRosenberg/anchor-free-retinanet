@@ -256,12 +256,11 @@ class FocalLoss(nn.Module):
                 regression_loss = torch.where(torch.le(regression_diff, 1.0 / 9.0), 0.5 * 9.0 * torch.pow(regression_diff, 2), regression_diff - 0.5 / 9.0)
 
             #WHERE THE MAGIC HAPPENS
-            loss_for_this_instance_ls = []
+            losses_for_these_instances_ls = []
             follow_pyramid_losses = []
 
             for unique_instance in torch.unique(instance):
-                loss_for_this_instance = 1.
-                follow_loss = []
+                losses_for_this_instance_ls = []
                 for level in pyramid_levels:
                     bool_indices_for_pyramid_level = (pyramid == level)
                     bool_indices_for_instance = (instance == unique_instance)
@@ -275,15 +274,22 @@ class FocalLoss(nn.Module):
                     assert(reg_loss_per_instance_per_pyramid_level.mean() > 0),  "weird, instance:" + str(unique_instance.item()) + " and pyramid:" + str(level) + "have regression mean zero"
                     loss_per_instance_per_pyramid_level = reg_loss_per_instance_per_pyramid_level.mean() + cls_loss_per_instance_per_pyramid_level.mean()
                     #TODO: THIS LOSS
-                    follow_loss.append(round(loss_per_instance_per_pyramid_level.item(),2))
-                    loss_for_this_instance = loss_for_this_instance * (loss_per_instance_per_pyramid_level ** t_val)
 
-                torch.prod(loss_for_this_instance)
-                loss_for_this_instance_ls.append(loss_for_this_instance)
-                loss_for_these_instances = torch.stack(loss_for_this_instance_ls)
-                follow_pyramid_losses.append(follow_loss)
+                    losses_for_this_instance_ls = losses_for_this_instance_ls.append(loss_per_instance_per_pyramid_level)
 
-            total_loss = loss_for_these_instances.mean() + rest_cls_loss.mean() * rest_norm
+                follow_pyramid_losses.append([round(loss,2) for loss in losses_for_this_instance_ls])
+
+                avgx = np.mean(losses_for_this_instance_ls)
+                center = avgx - 1.
+
+                #TODO: CHECK THIS, should be a list into single float
+                normalized_losses = [(x - center) ** t_val for x in losses_for_this_instance_ls]
+                loss_for_this_instance = torch.prod(torch.tensor(normalized_losses))
+                losses_for_these_instances_ls.append(loss_for_this_instance)
+            losses_for_these_instances = torch.stack(losses_for_these_instances_ls)
+
+
+            total_loss = losses_for_these_instances.mean() + rest_cls_loss.mean() * rest_norm
 
             losses.append(total_loss)
 
