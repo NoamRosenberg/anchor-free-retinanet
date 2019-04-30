@@ -278,9 +278,13 @@ class FocalLoss(nn.Module):
                     losses_for_this_instance_ls.append(loss_per_instance_per_pyramid_level)
 
                 avgx = torch.mean(torch.stack(losses_for_this_instance_ls))
-                center = avgx - 1.
-
-                #TODO: CHECK THIS, should be a list into single float
+                if avgx < 1.:
+                    center = avgx - 1.
+                else:
+                    center = 0.
+                #min_pyramid_loss = min(losses_for_this_instance_ls)
+                #center = min(center, min_pyramid_loss)
+                #losses_for_this_instance_ls = [torch.clamp(x, min=1e-4, max=5.) for x in losses_for_this_instance_ls]
                 normalized_losses = [(x - center) ** t_val for x in losses_for_this_instance_ls]
                 loss_for_this_instance = torch.prod(torch.stack(normalized_losses))
                 follow_pyramid_losses.append([round(loss.item(), 2) for loss in normalized_losses])
