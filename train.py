@@ -47,6 +47,7 @@ def main(args=None):
 	parser.add_argument('--t_val', help='sensitivity of per pyramid loss', type=float, default=2.0)
 	parser.add_argument('--IOU', help='IoU loss or regular regression loss', type=int, default=1)
 	parser.add_argument('--rest_norm', help='weight for rest region, i.e. not effective region', type=float, default=1.0)
+	parser.add_argument('--center', help='center the per pyramid value', type=int, default=0)
 
 	parser = parser.parse_args(args)
 
@@ -166,11 +167,11 @@ def main(args=None):
 		
 		scheduler.step(np.mean(epoch_loss))	
 
-		torch.save(retinanet.module, os.path.join('/data/deeplearning/dataset/training/data/newLossRes','{}_retinanet_{}_snorm_{}_tval_{}_restnorm_{}_IOU_{}.pt'.format(parser.dataset, epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.IOU)))
+		torch.save(retinanet.module, os.path.join('/data/deeplearning/dataset/training/data/newLossRes','{}_retinanet_{}_snorm_{}_tval_{}_restnorm_{}_IOU_{}_centr_{}.pt'.format(parser.dataset, epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.IOU, parser.center)))
 
 	retinanet.eval()
 
-	torch.save(retinanet, os.path.join('/data/deeplearning/dataset/training/data/newLossRes','model_final_{}_snorm_{}_tval_{}_restnorm_{}_IOU_{}.pt'.format(epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.IOU)))
+	torch.save(retinanet, os.path.join('/data/deeplearning/dataset/training/data/newLossRes','model_final_{}_snorm_{}_tval_{}_restnorm_{}_IOU_{}_centr_{}.pt'.format(epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.IOU, parser.center)))
 
 if __name__ == '__main__':
  main()
