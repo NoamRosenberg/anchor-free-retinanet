@@ -26,7 +26,7 @@ def evaluate_coco(dataset, model, parser, threshold=0.05):
             # run network
             print(index)
             image = data['img'].permute(2, 0, 1).cuda().float().unsqueeze(dim=0)
-            scores, labels, boxes = model(image, parser)#####
+            scores, labels, boxes = model(image, parser)
             scores = scores.cpu()
             labels = labels.cpu()
             boxes  = boxes.cpu()
