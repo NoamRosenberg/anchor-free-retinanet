@@ -233,7 +233,7 @@ class ResNet(nn.Module):
 
     def forward(self, inputs, parser=None):
 
-        if parser is None and self.Training is False:
+        if parser is None and self.training is False:
             parser.s_norm = 4.0
 
         if self.training:
