@@ -231,7 +231,10 @@ class ResNet(nn.Module):
             if isinstance(layer, nn.BatchNorm2d):
                 layer.eval()
 
-    def forward(self, inputs, parser):
+    def forward(self, inputs, parser=None):
+
+        if parser is None and self.Training is False:
+            parser.s_norm = 4.0
 
         if self.training:
             img_batch, annotations = inputs
