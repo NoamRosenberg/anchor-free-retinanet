@@ -141,6 +141,7 @@ def main(args=None):
 
     models_ls = os.listdir(parser.models_path)
     for m in models_ls:
+        parser.s_norm = float(m.split('snorm')[1][1:4])
         eval_model_then_pkl_it(dataset_val, m, parser)
 
 
