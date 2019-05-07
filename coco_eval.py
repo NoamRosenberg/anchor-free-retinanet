@@ -82,12 +82,13 @@ def evaluate_coco(dataset, model, parser=None, threshold=0.05):
         if not len(results):
             return
 
+
         # write output
-        json.dump(results, open('{}_bbox_results.json'.format(dataset.set_name), 'w'), indent=4)
+        json.dump(results, open('{}_bbox_results_{}.json'.format(dataset.set_name, __name__), 'w'), indent=4)
 
         # load results in COCO evaluation tool
         coco_true = dataset.coco
-        coco_pred = coco_true.loadRes('{}_bbox_results.json'.format(dataset.set_name))
+        coco_pred = coco_true.loadRes('{}_bbox_results_{}.json'.format(dataset.set_name, __name__))
 
         # run COCO evaluation
         coco_eval = COCOeval(coco_true, coco_pred, 'bbox')
