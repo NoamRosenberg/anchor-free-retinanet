@@ -15,7 +15,7 @@ from torch.optim import lr_scheduler
 from torch.autograd import Variable
 from torchvision import datasets, models, transforms
 import torchvision
-
+import tensorflow as tf
 import model
 from anchors import Anchors
 import losses
@@ -48,9 +48,10 @@ def main(args=None):
 	parser.add_argument('--IOU', help='IoU loss or regular regression loss', type=int, default=1)
 	parser.add_argument('--rest_norm', help='weight for rest region, i.e. not effective region', type=float, default=1.0)
 	parser.add_argument('--center', help='center the per pyramid value', type=int, default=0)
-
+	parser.add_argument('--save_model_dir', default='/data/deeplearning/dataset/training/data/newLossRes')
+	parser.add_argument('--log_dir', default='/data/deeplearning/dataset/training/data/log_dir')
 	parser = parser.parse_args(args)
-
+	tf.summary.FileWriter(parser.log_dir)
 	# Create the data loaders
 	if parser.dataset == 'coco':
 		if parser.coco_path is None:
@@ -147,6 +148,7 @@ def main(args=None):
 				iter_loss.append(float(batch_loss))
 				#example of pyramid losses
 				instance_loss = np.prod(follow_[0])
+				tf.summary.scalar('mean_iter_loss', np.mean(iter_loss))
 				if iter_num % 10 == 0:
 					print('Epoch: {} | Iteration: {} | Loss: {:1.5f} | Running loss: {:1.5f} | py_losses: {} | prod: {}'
 						  .format(epoch_num, iter_num, np.mean(iter_loss), np.mean(loss_hist), follow_[0], round(instance_loss,3)))
@@ -167,11 +169,11 @@ def main(args=None):
 		
 		scheduler.step(np.mean(epoch_loss))	
 
-		torch.save(retinanet.module, os.path.join('/data/deeplearning/dataset/training/data/newLossRes','{}_retinanet_{}_snorm_{}_tval_{}_restnorm_{}_IOU_{}_centr_{}.pt'.format(parser.dataset, epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.IOU, parser.center)))
+		torch.save(retinanet.module, os.path.join(parser.save_model_dir,'{}_retinanet_{}_snorm_{}_tval_{}_restnorm_{}_IOU_{}_centr_{}.pt'.format(parser.dataset, epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.IOU, parser.center)))
 
 	retinanet.eval()
 
-	torch.save(retinanet, os.path.join('/data/deeplearning/dataset/training/data/newLossRes','model_final_{}_snorm_{}_tval_{}_restnorm_{}_IOU_{}_centr_{}.pt'.format(epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.IOU, parser.center)))
+	torch.save(retinanet, os.path.join(parser.save_model_dir,'model_final_{}_snorm_{}_tval_{}_restnorm_{}_IOU_{}_centr_{}.pt'.format(epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.IOU, parser.center)))
 
 if __name__ == '__main__':
  main()
