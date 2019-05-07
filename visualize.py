@@ -25,13 +25,13 @@ print('CUDA available: {}'.format(torch.cuda.is_available()))
 def main(args=None):
 	parser = argparse.ArgumentParser(description='Simple training script for training a RetinaNet network.')
 
-	parser.add_argument('--dataset', help='Dataset type, must be one of csv or coco.')
-	parser.add_argument('--coco_path', help='Path to COCO directory')
+	parser.add_argument('--dataset', help='Dataset type, must be one of csv or coco.', default='coco')
+	parser.add_argument('--coco_path', help='Path to COCO directory', default='/data/deeplearning/dataset/coco2017')
 	parser.add_argument('--csv_classes', help='Path to file containing class list (see readme)')
 	parser.add_argument('--csv_val', help='Path to file containing validation annotations (optional, see readme)')
 
-	parser.add_argument('--model', help='Path to model (.pt) file.')
-
+	parser.add_argument('--model', help='Path to model (.pt) file.', default='/data/deeplearning/dataset/training/data/newLossRes/coco_retinanet_13_snorm_4.0_tval_1.0_restnorm_1.0_IOU_1.pt')
+	parser.add_argument('--s_norm', default=4.0)
 	parser = parser.parse_args(args)
 
 	if parser.dataset == 'coco':
@@ -65,7 +65,7 @@ def main(args=None):
 
 		with torch.no_grad():
 			st = time.time()
-			scores, classification, transformed_anchors = retinanet(data['img'].cuda().float())
+			scores, classification, transformed_anchors = retinanet(data['img'].cuda().float(), parser)
 			print('Elapsed time: {}'.format(time.time()-st))
 			idxs = np.where(scores>0.5)
 			img = np.array(255 * unnormalize(data['img'][0, :, :, :])).copy()
@@ -87,9 +87,10 @@ def main(args=None):
 				draw_caption(img, (x1, y1, x2, y2), label_name)
 
 				cv2.rectangle(img, (x1, y1), (x2, y2), color=(0, 0, 255), thickness=2)
-				print(label_name)
+				#print(label_name)
 
-			cv2.imshow('img', img)
+			#cv2.imshow('img', img)
+			cv2.imwrite(os.path.join('/data/deeplearning/dataset/training/data/vis/',str(idx),'.jpg'), img)
 			cv2.waitKey(0)
 
 
