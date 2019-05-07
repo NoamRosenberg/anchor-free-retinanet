@@ -141,9 +141,17 @@ def main(args=None):
     dataloader_val = DataLoader(dataset_val, num_workers=1, collate_fn=collater, batch_sampler=sampler_val)
 
     models_ls = os.listdir(parser.models_path)
+    eval_ls = os.listdir(parser.eval_path)
+
     for m in models_ls:
-        parser.s_norm = float(m.split('snorm')[1][1:4])
-        eval_model_then_pkl_it(dataset_val, m, parser)
+        eval_m = True
+        for e in eval_ls:
+            if m in e:
+                eval_m = False
+                break
+        if eval_m:
+            parser.s_norm = float(m.split('snorm')[1][1:4])
+            eval_model_then_pkl_it(dataset_val, m, parser)
 
 
 if __name__ == '__main__':

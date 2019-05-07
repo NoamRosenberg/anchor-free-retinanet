@@ -162,9 +162,6 @@ class FocalLoss(nn.Module):
                     #only return indices where both x and y coordinates are inside effective box
                     bool_pixel_indices_inside_effbox = x_indices_inside_effbox * y_indices_inside_effbox
 
-                    #assert (bool_pixel_indices_inside_effbox.sum() > 0), "this effective box isnt being counted" + str(box[pyramid_idx]) + " instance:" + str(i) + " pyramid:" + str(pyramid_idx + 3)
-                    #if bool_pixel_indices_inside_effbox.sum().item() == 0:
-                        #print("number of pixels inside effective box: " + str(bool_pixel_indices_inside_effbox.sum().item()), ", box:", str(i), ", pyramid idx:", str(pyramid_idx))
                     #compute class
                     box_class = box[0, 4].long()
                     # from bool indices to regular indices
@@ -286,9 +283,6 @@ class FocalLoss(nn.Module):
                         center = 0.
                 else:
                     center = 0.
-                #min_pyramid_loss = min(losses_for_this_instance_ls)
-                #center = min(center, min_pyramid_loss)
-                #losses_for_this_instance_ls = [torch.clamp(x, min=1e-4, max=5.) for x in losses_for_this_instance_ls]
                 normalized_losses = [(x - center) ** t_val for x in losses_for_this_instance_ls]
                 loss_for_this_instance = torch.prod(torch.stack(normalized_losses))
                 follow_pyramid_losses.append([round(loss.item(), 2) for loss in normalized_losses])
@@ -302,5 +296,3 @@ class FocalLoss(nn.Module):
 
 
         return torch.stack(losses), follow_pyramid_losses
-
-    
