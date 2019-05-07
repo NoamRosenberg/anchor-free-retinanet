@@ -100,6 +100,19 @@ def evaluate_coco(dataset, model, parser=None, threshold=0.05):
 
         return coco_eval
 
+def eval_model_then_pkl_it(dataset_val, model, parser):
+
+    retinanet = torch.load(os.path.join(parser.models_path, model))
+    use_gpu = True
+    if use_gpu:
+        retinanet = retinanet.cuda()
+    retinanet.eval()
+    eval_file = os.path.join(parser.eval_path, '{}_results.pkl'.format(model))
+
+    coco_eval = evaluate_coco(dataset_val, retinanet, parser)
+    with open(eval_file, 'wb') as fid:
+        pickle.dump(coco_eval, fid, pickle.HIGHEST_PROTOCOL)
+        print('Wrote COCO eval results to: {}'.format(eval_file))
 
 def main(args=None):
     parser = argparse.ArgumentParser(description='Simple training script for training a RetinaNet network.')
@@ -109,7 +122,8 @@ def main(args=None):
     parser.add_argument('--csv_classes', help='Path to file containing class list (see readme)')
     parser.add_argument('--csv_val', help='Path to file containing validation annotations (optional, see readme)')
     parser.add_argument('--s_norm', help='normalize regression outputs', type=float, default=4.0)
-    parser.add_argument('--model', help='Path to model (.pt) file.')
+    parser.add_argument('--models_path', help='Path to model (.pt) file.', default='/data/deeplearning/dataset/training/data/newLossRes')
+    parser.add_argument('--eval_path', help='Path to model (.pt) file.', default='/data/deeplearning/dataset/training/data/new_loss_evaluations')
 
     parser = parser.parse_args(args)
 
@@ -125,21 +139,9 @@ def main(args=None):
     sampler_val = AspectRatioBasedSampler(dataset_val, batch_size=1, drop_last=False)
     dataloader_val = DataLoader(dataset_val, num_workers=1, collate_fn=collater, batch_sampler=sampler_val)
 
-    retinanet = torch.load(parser.model)
-
-    use_gpu = True
-
-    if use_gpu:
-        retinanet = retinanet.cuda()
-
-    retinanet.eval()
-    coco_eval = evaluate_coco(dataset_val, retinanet, parser)
-    eval_file = os.path.join('/data/deeplearning/dataset/training/data/newLossRes', 'coco_retinanet_{}.pkl'.format('test'))
-
-    with open(eval_file, 'wb') as fid:
-        pickle.dump(coco_eval, fid, pickle.HIGHEST_PROTOCOL)
-        print('Wrote COCO eval results to: {}'.format(eval_file))
-
+    models_ls = os.listdir(parser.models_path)
+    for m in models_ls:
+        eval_model_then_pkl_it(dataset_val, m, parser)
 
 
 if __name__ == '__main__':
