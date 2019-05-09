@@ -157,22 +157,22 @@ def main(args=None):
 				print(e)
 				continue
 
-		if parser.dataset == 'coco':
-
-			print('Evaluating dataset')
-			coco_eval.evaluate_coco(dataset_val, retinanet, parser)
-
-		elif parser.dataset == 'csv' and parser.csv_val is not None:
-			print('Evaluating dataset')
-			mAP = csv_eval.evaluate(dataset_val, retinanet)
+#		if parser.dataset == 'coco':
+#
+#			print('Evaluating dataset')
+#			coco_eval.evaluate_coco(dataset_val, retinanet, parser)
+#
+#		elif parser.dataset == 'csv' and parser.csv_val is not None:
+#			print('Evaluating dataset')
+#			mAP = csv_eval.evaluate(dataset_val, retinanet)
 
 		
 		scheduler.step(np.mean(epoch_loss))	
-
+		print('saving checkpoint')
 		torch.save(retinanet.module, os.path.join(parser.save_model_dir,'{}_retinanet_{}_snorm_{}_tval_{}_restnorm_{}_IOU_{}_centr_{}.pt'.format(parser.dataset, epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.IOU, parser.center)))
 
 	retinanet.eval()
-
+	print('saving model')
 	torch.save(retinanet, os.path.join(parser.save_model_dir,'model_final_{}_snorm_{}_tval_{}_restnorm_{}_IOU_{}_centr_{}.pt'.format(epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.IOU, parser.center)))
 
 if __name__ == '__main__':
