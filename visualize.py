@@ -30,7 +30,7 @@ def main(args=None):
 	parser.add_argument('--csv_classes', help='Path to file containing class list (see readme)')
 	parser.add_argument('--csv_val', help='Path to file containing validation annotations (optional, see readme)')
 
-	parser.add_argument('--model', help='Path to model (.pt) file.', default='/data/deeplearning/dataset/training/data/newLossRes/coco_retinanet_13_snorm_4.0_tval_1.0_restnorm_1.0_IOU_1.pt')
+	parser.add_argument('--model', help='Path to model (.pt) file.', default='/data/deeplearning/dataset/training/data/newLossRes/coco_retinanet_16_snorm_4.0_tval_1.0_restnorm_1.0_IOU_1.pt')
 	parser.add_argument('--s_norm', default=4.0)
 	parser = parser.parse_args(args)
 
@@ -67,7 +67,7 @@ def main(args=None):
 			st = time.time()
 			scores, classification, transformed_anchors = retinanet(data['img'].cuda().float(), parser)
 			print('Elapsed time: {}'.format(time.time()-st))
-			idxs = np.where(scores>0.5)
+			idxs = np.where(scores>0.9)
 			img = np.array(255 * unnormalize(data['img'][0, :, :, :])).copy()
 
 			img[img<0] = 0
@@ -83,7 +83,7 @@ def main(args=None):
 				y1 = int(bbox[1])
 				x2 = int(bbox[2])
 				y2 = int(bbox[3])
-				label_name = dataset_val.labels[int(classification[idxs[0][j]])]
+				label_name = dataset_val.labels[int(classification[idxs[0][j]])] + '_' + str(round(scores[idxs[0][j]].item(),2))
 				draw_caption(img, (x1, y1, x2, y2), label_name)
 
 				cv2.rectangle(img, (x1, y1), (x2, y2), color=(0, 0, 255), thickness=2)

@@ -44,10 +44,12 @@ def main(args=None):
 	parser.add_argument('--epochs', help='Number of epochs', type=int, default=100)
 	parser.add_argument('--lr', help='learning rate', type=float, default=1e-5)
 	parser.add_argument('--s_norm', help='normalize regression outputs', type=float, default=4.0)
-	parser.add_argument('--t_val', help='sensitivity of per pyramid loss', type=float, default=2.0)
+	parser.add_argument('--t_val', help='sensitivity of per pyramid loss', type=float, default=1.0)
 	parser.add_argument('--IOU', help='IoU loss or regular regression loss', type=int, default=1)
 	parser.add_argument('--rest_norm', help='weight for rest region, i.e. not effective region', type=float, default=1.0)
 	parser.add_argument('--center', help='center the per pyramid value', type=int, default=0)
+	parser.add_argument('--adam', help='adam opt', type=int, default=0)
+	parser.add_argument('--resume', help='path to model', type=str, default='/data/deeplearning/dataset/training/data/newLossRes/coco_retinanet_16_snorm_4.0_tval_1.0_restnorm_1.0_IOU_1.pt')
 	parser.add_argument('--save_model_dir', default='/data/deeplearning/dataset/training/data/newLossRes')
 	parser.add_argument('--log_dir', default='/data/deeplearning/dataset/training/data/log_dir')
 	parser = parser.parse_args(args)
@@ -82,19 +84,24 @@ def main(args=None):
 		sampler_val = AspectRatioBasedSampler(dataset_val, batch_size=1, drop_last=False)
 		dataloader_val = DataLoader(dataset_val, num_workers=0, collate_fn=collater, batch_sampler=sampler_val)
 
-	# Create the model
-	if parser.depth == 18:
-		retinanet = model.resnet18(num_classes=dataset_train.num_classes(), pretrained=True)
-	elif parser.depth == 34:
-		retinanet = model.resnet34(num_classes=dataset_train.num_classes(), pretrained=True)
-	elif parser.depth == 50:
-		retinanet = model.resnet50(num_classes=dataset_train.num_classes(), pretrained=True)
-	elif parser.depth == 101:
-		retinanet = model.resnet101(num_classes=dataset_train.num_classes(), pretrained=True)
-	elif parser.depth == 152:
-		retinanet = model.resnet152(num_classes=dataset_train.num_classes(), pretrained=True)
+	if parser.resume is not None:
+		retinanet = torch.load(parser.resume)
+		start_epoch = int(parser.resume.split('coco_retinanet_')[1].split('_')[0])
 	else:
-		raise ValueError('Unsupported model depth, must be one of 18, 34, 50, 101, 152')		
+		start_epoch = 0
+		# Create the model
+		if parser.depth == 18:
+			retinanet = model.resnet18(num_classes=dataset_train.num_classes(), pretrained=True)
+		elif parser.depth == 34:
+			retinanet = model.resnet34(num_classes=dataset_train.num_classes(), pretrained=True)
+		elif parser.depth == 50:
+			retinanet = model.resnet50(num_classes=dataset_train.num_classes(), pretrained=True)
+		elif parser.depth == 101:
+			retinanet = model.resnet101(num_classes=dataset_train.num_classes(), pretrained=True)
+		elif parser.depth == 152:
+			retinanet = model.resnet152(num_classes=dataset_train.num_classes(), pretrained=True)
+		else:
+			raise ValueError('Unsupported model depth, must be one of 18, 34, 50, 101, 152')
 
 	use_gpu = True
 
@@ -104,10 +111,11 @@ def main(args=None):
 	retinanet = torch.nn.DataParallel(retinanet).cuda()
 
 	retinanet.training = True
-
-	optimizer = optim.Adam(retinanet.parameters(), lr=parser.lr)
-
-	scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True)
+	if parser.adam:
+		optimizer = optim.Adam(retinanet.parameters(), lr=parser.lr)
+	else:
+		optimizer = optim.SGD(retinanet.parameters(), lr=parser.lr, momentum=0.9)
+		scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True)
 
 	loss_hist = collections.deque(maxlen=500)
 
@@ -116,7 +124,8 @@ def main(args=None):
 
 	print('Num training images: {}'.format(len(dataset_train)))
 
-	for epoch_num in range(parser.epochs):
+
+	for epoch_num in range(start_epoch, parser.epochs):
 
 		retinanet.train()
 		retinanet.module.freeze_bn()
@@ -169,11 +178,11 @@ def main(args=None):
 		
 		scheduler.step(np.mean(epoch_loss))	
 		print('saving checkpoint')
-		torch.save(retinanet.module, os.path.join(parser.save_model_dir,'{}_retinanet_{}_snorm_{}_tval_{}_restnorm_{}_IOU_{}_centr_{}.pt'.format(parser.dataset, epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.IOU, parser.center)))
+		torch.save(retinanet.module, os.path.join(parser.save_model_dir,'{}_retinanet_{}_snorm_{}_tval_{}_restnorm_{}_lr_{}_ada_{}.pt'.format(parser.dataset, epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.lr, parser.adam)))
 
 	retinanet.eval()
 	print('saving model')
-	torch.save(retinanet, os.path.join(parser.save_model_dir,'model_final_{}_snorm_{}_tval_{}_restnorm_{}_IOU_{}_centr_{}.pt'.format(epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.IOU, parser.center)))
+	torch.save(retinanet, os.path.join(parser.save_model_dir,'model_final_{}_snorm_{}_tval_{}_restnorm_{}_lr_{}_ada_{}.pt'.format(epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.lr, parser.adam)))
 
 if __name__ == '__main__':
  main()
