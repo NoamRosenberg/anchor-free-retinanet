@@ -90,7 +90,7 @@ def main(args=None):
 				#print(label_name)
 
 			#cv2.imshow('img', img)
-			cv2.imwrite(os.path.join('/data/deeplearning/dataset/training/data/vis/',str(idx),'.jpg'), img)
+			cv2.imwrite(os.path.join('/data/deeplearning/dataset/training/data/vis/',str(idx) + '.jpg'), img)
 			cv2.waitKey(0)
 
 
