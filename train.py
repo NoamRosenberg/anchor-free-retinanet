@@ -49,7 +49,7 @@ def main(args=None):
 	parser.add_argument('--rest_norm', help='weight for rest region, i.e. not effective region', type=float, default=1.0)
 	parser.add_argument('--center', help='center the per pyramid value', type=int, default=0)
 	parser.add_argument('--adam', help='adam opt', type=int, default=0)
-	parser.add_argument('--resume', help='path to model', type=str, default='/data/deeplearning/dataset/training/data/newLossRes/coco_retinanet_16_snorm_4.0_tval_1.0_restnorm_1.0_IOU_1.pt')
+	parser.add_argument('--resume', help='path to model', type=str, default=None)
 	parser.add_argument('--save_model_dir', default='/data/deeplearning/dataset/training/data/newLossRes')
 	parser.add_argument('--log_dir', default='/data/deeplearning/dataset/training/data/log_dir')
 	parser = parser.parse_args(args)
