@@ -275,7 +275,7 @@ class FocalLoss(nn.Module):
                     losses_for_this_instance_ls.append(loss_per_instance_per_pyramid_level)
 
                 avgx = torch.mean(torch.stack(losses_for_this_instance_ls))
-                #try to center pyramid losses around 1
+                #try to center pyramid losses around 1 ## doesnt help
                 if args.center:
                     if avgx < 1.:
                         center = avgx - 1.
@@ -294,5 +294,5 @@ class FocalLoss(nn.Module):
 
             losses.append(total_loss)
 
-
-        return torch.stack(losses), follow_pyramid_losses
+#        return torch.stack(losses), follow_pyramid_losses
+        return torch.stack(losses)

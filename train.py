@@ -49,6 +49,7 @@ def main(args=None):
 	parser.add_argument('--rest_norm', help='weight for rest region, i.e. not effective region', type=float, default=1.0)
 	parser.add_argument('--center', help='center the per pyramid value', type=int, default=0)
 	parser.add_argument('--adam', help='adam opt', type=int, default=0)
+	parser.add_argument('--momentum', help='sgd momentum', type=float, default=0.99)
 	parser.add_argument('--resume', help='path to model', type=str, default=None)
 	parser.add_argument('--save_model_dir', default='/data/deeplearning/dataset/training/data/newLossRes')
 	parser.add_argument('--log_dir', default='/data/deeplearning/dataset/training/data/log_dir')
@@ -137,8 +138,8 @@ def main(args=None):
 				iter_loss = []
 				optimizer.zero_grad()
 
-				per_picture_loss, follow_ = retinanet([data['img'].cuda().float(), data['annot']], parser)
-
+				#per_picture_loss, follow_ = retinanet([data['img'].cuda().float(), data['annot']], parser)
+				per_picture_loss= retinanet([data['img'].cuda().float(), data['annot']], parser)
 
 				batch_loss = per_picture_loss.mean()
 				
@@ -156,11 +157,11 @@ def main(args=None):
 				epoch_loss.append(float(batch_loss))
 				iter_loss.append(float(batch_loss))
 				#example of pyramid losses
-				instance_loss = np.prod(follow_[0])
+				#instance_loss = np.prod(follow_[0])
 				tf.summary.scalar('mean_iter_loss', np.mean(iter_loss))
 				if iter_num % 10 == 0:
-					print('Epoch: {} | Iteration: {} | Loss: {:1.5f} | Running loss: {:1.5f} | py_losses: {} | prod: {}'
-						  .format(epoch_num, iter_num, np.mean(iter_loss), np.mean(loss_hist), follow_[0], round(instance_loss,3)))
+					print('Epoch: {} | Iteration: {} | Loss: {:1.5f} | Running loss: {:1.5f}'
+						  .format(epoch_num, iter_num, np.mean(iter_loss), np.mean(loss_hist)))
 				del batch_loss
 			except Exception as e:
 				print(e)
@@ -178,11 +179,11 @@ def main(args=None):
 		
 		scheduler.step(np.mean(epoch_loss))	
 		print('saving checkpoint')
-		torch.save(retinanet.module, os.path.join(parser.save_model_dir,'{}_retinanet_{}_snorm_{}_tval_{}_restnorm_{}_lr_{}_ada_{}.pt'.format(parser.dataset, epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.lr, parser.adam)))
+		torch.save(retinanet.module, os.path.join(parser.save_model_dir,'{}_retinanet_{}_snorm_{}_tval_{}_restnorm_{}_lr_{}_ada_{}_mom_{}.pt'.format(parser.dataset, epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.lr, parser.adam, parser.momentum)))
 
 	retinanet.eval()
 	print('saving model')
-	torch.save(retinanet, os.path.join(parser.save_model_dir,'model_final_{}_snorm_{}_tval_{}_restnorm_{}_lr_{}_ada_{}.pt'.format(epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.lr, parser.adam)))
+	torch.save(retinanet, os.path.join(parser.save_model_dir,'model_final_{}_snorm_{}_tval_{}_restnorm_{}_lr_{}_ada_{}_mom_{}.pt'.format(epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.lr, parser.adam, parser.momentum)))
 
 if __name__ == '__main__':
  main()
