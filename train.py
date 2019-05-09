@@ -114,7 +114,7 @@ def main(args=None):
 	if parser.adam:
 		optimizer = optim.Adam(retinanet.parameters(), lr=parser.lr)
 	else:
-		optimizer = optim.SGD(retinanet.parameters(), lr=parser.lr, momentum=0.9)
+		optimizer = optim.SGD(retinanet.parameters(), lr=parser.lr, momentum=0.9, weight_decay=0.0001)
 		scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True)
 
 	loss_hist = collections.deque(maxlen=500)
