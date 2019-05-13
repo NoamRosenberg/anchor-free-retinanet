@@ -88,7 +88,7 @@ def main(args=None):
 
 	if parser.resume is not None:
 		retinanet = torch.load(parser.resume)
-		start_epoch = int(parser.resume.split('coco_retinanet_')[1].split('_')[0])
+		start_epoch = int(parser.resume.split('coco_retinanet_')[1].split('_')[0]) + 1
 	else:
 		start_epoch = 0
 		# Create the model
