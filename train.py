@@ -49,8 +49,8 @@ def main(args=None):
 	parser.add_argument('--rest_norm', help='weight for rest region, i.e. not effective region', type=float, default=1.0)
 	parser.add_argument('--center', help='center the per pyramid value', type=int, default=0)
 	parser.add_argument('--adam', help='adam opt', type=int, default=0)
-	parser.add_argument('--momentum', help='sgd momentum', type=float, default=0.99)
-	parser.add_argument('--resume', help='path to model', type=str, default=None)
+	parser.add_argument('--momentum', help='sgd momentum', type=float, default=0.9)
+	parser.add_argument('--resume', help='path to model', type=str, default='/data/deeplearning/dataset/training/data/newLossRes/coco_retinanet_9_snorm_4.0_tval_1.0_restnorm_1.0_lr_0.0001_ada_0_mom_0.99.pt')
 	parser.add_argument('--save_model_dir', default='/data/deeplearning/dataset/training/data/newLossRes')
 	parser.add_argument('--log_dir', default='/data/deeplearning/dataset/training/data/log_dir')
 	parser = parser.parse_args(args)
@@ -114,6 +114,7 @@ def main(args=None):
 	retinanet.training = True
 	if parser.adam:
 		optimizer = optim.Adam(retinanet.parameters(), lr=parser.lr)
+		scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True)
 	else:
 		optimizer = optim.SGD(retinanet.parameters(), lr=parser.lr, momentum=0.9, weight_decay=0.0001)
 		scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True)
@@ -176,8 +177,8 @@ def main(args=None):
 #			print('Evaluating dataset')
 #			mAP = csv_eval.evaluate(dataset_val, retinanet)
 
-		
-		scheduler.step(np.mean(epoch_loss))	
+		#if not parser.adam: ???
+		scheduler.step(np.mean(epoch_loss))
 		print('saving checkpoint')
 		torch.save(retinanet.module, os.path.join(parser.save_model_dir,'{}_retinanet_{}_snorm_{}_tval_{}_restnorm_{}_lr_{}_ada_{}_mom_{}.pt'.format(parser.dataset, epoch_num, parser.s_norm, parser.t_val, parser.rest_norm, parser.lr, parser.adam, parser.momentum)))
 
