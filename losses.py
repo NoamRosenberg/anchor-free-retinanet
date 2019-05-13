@@ -29,7 +29,7 @@ class FocalLoss(nn.Module):
         gamma = 2.0
         rest_norm = args.rest_norm
         s_norm = args.s_norm
-        t_val = args.t_val #This value controls the Lnorm of the per pyramid loss (for a single instance)
+        t_val = args.t_val
         IOULoss = bool(args.IOU)
         batch_size = classifications.shape[0]
         classification_losses = []
@@ -271,11 +271,15 @@ class FocalLoss(nn.Module):
                     assert(reg_loss_per_instance_per_pyramid_level.mean() > 0),  "weird, instance:" + str(unique_instance.item()) + " and pyramid:" + str(level) + "have regression mean zero"
                     loss_per_instance_per_pyramid_level = reg_loss_per_instance_per_pyramid_level.mean() + cls_loss_per_instance_per_pyramid_level.mean()
                     #TODO: THIS LOSS
-
                     losses_for_this_instance_ls.append(loss_per_instance_per_pyramid_level)
 
-
-                loss_for_this_instance = torch.prod(torch.stack(losses_for_this_instance_ls))
+                if args.perc:
+                    sorted_losses_for_this_instance_ls = sorted(losses_for_this_instance_ls)
+                    normalized_ls = [sorted_losses_for_this_instance_ls[i] / (i + 1) ** t_val for i in
+                         range(len(sorted_losses_for_this_instance_ls))]
+                    loss_for_this_instance = sum(normalized_ls)
+                else:
+                    loss_for_this_instance = torch.prod(torch.stack(losses_for_this_instance_ls))
                 follow_pyramid_losses.append([round(loss.item(), 2) for loss in losses_for_this_instance_ls])
                 losses_for_these_instances_ls.append(loss_for_this_instance)
             losses_for_these_instances = torch.stack(losses_for_these_instances_ls)
