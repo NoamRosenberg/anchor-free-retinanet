@@ -18,7 +18,7 @@ from torchvision import datasets, models, transforms
 from dataloader import CocoDataset, CSVDataset, collater, Resizer, AspectRatioBasedSampler, Augmenter, UnNormalizer, \
     Normalizer
 
-assert torch.__version__.split('.')[1] == '4'
+#assert torch.__version__.split('.')[1] == '4'
 
 print('CUDA available: {}'.format(torch.cuda.is_available()))
 
@@ -125,7 +125,7 @@ def main(args=None):
     parser.add_argument('--s_norm', help='normalize regression outputs', type=float, default=4.0)
     parser.add_argument('--models_path', help='Path to model (.pt) file.', default='/data/deeplearning/dataset/training/data/newLossRes')
     parser.add_argument('--eval_path', help='Path to model (.pt) file.', default='/data/deeplearning/dataset/training/data/new_loss_evaluations')
-
+    parser.add_argument('--model', help='Path to model (.pt) file.', default='')
     parser = parser.parse_args(args)
 
     if parser.dataset == 'coco':
@@ -149,8 +149,9 @@ def main(args=None):
             if m in e:
                 eval_m = False
                 break
-        if eval_m:
-            parser.s_norm = float(m.split('snorm')[1][1:4])
+        if eval_m and parser.model in m:
+            #parser.s_norm = float(m.split('snorm')[1][1:4])
+            parser.s_norm = 4.0
             eval_model_then_pkl_it(dataset_val, m, parser)
 
 
