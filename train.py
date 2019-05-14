@@ -25,7 +25,7 @@ from torch.utils.data import Dataset, DataLoader
 import coco_eval
 import csv_eval
 
-assert torch.__version__.split('.')[1] == '4'
+#assert torch.__version__.split('.')[1] == '4'
 
 print('CUDA available: {}'.format(torch.cuda.is_available()))
 
@@ -50,8 +50,9 @@ def main(args=None):
 	parser.add_argument('--center', help='center the per pyramid value', type=int, default=0)
 	parser.add_argument('--adam', help='adam opt', type=int, default=0)
 	parser.add_argument('--perc', help='adam opt', type=int, default=1)
+	parser.add_argument('--batch_size', help='adam opt', type=int, default=2)
 	parser.add_argument('--momentum', help='sgd momentum', type=float, default=0.9)
-	parser.add_argument('--resume', help='path to model', type=str, default='/data/deeplearning/dataset/training/data/newLossRes/coco_retinanet_16_snorm_4.0_tval_1.0_restnorm_1.0_lr_1e-05_ada_0_mom_0.99.pt')
+	parser.add_argument('--resume', help='path to model', type=str, default=None)
 	parser.add_argument('--save_model_dir', default='/data/deeplearning/dataset/training/data/newLossRes')
 	parser.add_argument('--log_dir', default='/data/deeplearning/dataset/training/data/log_dir')
 	parser = parser.parse_args(args)
@@ -79,7 +80,7 @@ def main(args=None):
 	else:
 		raise ValueError('Dataset type not understood (must be csv or coco), exiting.')
 
-	sampler = AspectRatioBasedSampler(dataset_train, batch_size=2, drop_last=False)
+	sampler = AspectRatioBasedSampler(dataset_train, batch_size=parser.batch_size, drop_last=False)
 	dataloader_train = DataLoader(dataset_train, num_workers=0, collate_fn=collater, batch_sampler=sampler)
 
 	if dataset_val is not None:
@@ -181,11 +182,11 @@ def main(args=None):
 		#if not parser.adam: ???
 		scheduler.step(np.mean(epoch_loss))
 		print('saving checkpoint')
-		torch.save(retinanet.module, os.path.join(parser.save_model_dir,'{}_retinanet_{}_perc_{}_tval_{}_restnorm_{}_lr_{}_ada_{}_mom_{}.pt'.format(parser.dataset, epoch_num, parser.perc, parser.t_val, parser.rest_norm, parser.lr, parser.adam, parser.momentum)))
+		torch.save(retinanet.module, os.path.join(parser.save_model_dir,'{}_retinanet_{}_perc_{}_tval_{}_bs_{}_lr_{}_ada_{}_mom_{}.pt'.format(parser.dataset, epoch_num, parser.perc, parser.t_val, parser.batch_size, parser.lr, parser.adam, parser.momentum)))
 
 	retinanet.eval()
 	print('saving model')
-	torch.save(retinanet, os.path.join(parser.save_model_dir,'model_final_{}_perc_{}_tval_{}_restnorm_{}_lr_{}_ada_{}_mom_{}.pt'.format(epoch_num, parser.perc, parser.t_val, parser.rest_norm, parser.lr, parser.adam, parser.momentum)))
+	torch.save(retinanet, os.path.join(parser.save_model_dir,'model_final_{}_perc_{}_tval_{}_bs_{}_lr_{}_ada_{}_mom_{}.pt'.format(epoch_num, parser.perc, parser.t_val, parser.batch_size, parser.lr, parser.adam, parser.momentum)))
 
 if __name__ == '__main__':
  main()
