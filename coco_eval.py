@@ -23,7 +23,7 @@ from dataloader import CocoDataset, CSVDataset, collater, Resizer, AspectRatioBa
 print('CUDA available: {}'.format(torch.cuda.is_available()))
 
 
-def evaluate_coco(dataset, model, parser=None, threshold=0.05):
+def evaluate_coco(dataset, model, parser, coco_object,threshold=0.05):
     model.eval()
 
     with torch.no_grad():
@@ -32,19 +32,21 @@ def evaluate_coco(dataset, model, parser=None, threshold=0.05):
         results = []
         image_ids = []
 
-        for index in range(len(dataset)):
-            data = dataset[index]
+        #for index in range(len(dataset)):
+        for index, data in enumerate(dataset):
+            #data = dataset[index]
             scale = data['scale']
             # run network
-            #print(index)
-            image = data['img'].permute(2, 0, 1).cuda().float().unsqueeze(dim=0)
-            scores, labels, boxes = model(image, parser)
+            print(index)
+            #image = data['img'].permute(2, 0, 1).cuda().float().unsqueeze(dim=0)
+            scores, labels, boxes = model(data['img'].cuda().float(), parser)
             scores = scores.cpu()
             labels = labels.cpu()
             boxes = boxes.cpu()
 
             # correct boxes for image scale
-            boxes /= scale
+            #boxes /= scale
+            boxes /= scale[0]
 
             if boxes.shape[0] > 0:
                 # change to (x, y, w, h) (MS COCO standard)
@@ -64,8 +66,8 @@ def evaluate_coco(dataset, model, parser=None, threshold=0.05):
 
                     # append detection for each positively labeled class
                     image_result = {
-                        'image_id': dataset.image_ids[index],
-                        'category_id': dataset.label_to_coco_label(label),
+                        'image_id': coco_object.image_ids[index],
+                        'category_id': coco_object.label_to_coco_label(label),
                         'score': float(score),
                         'bbox': box.tolist(),
                     }
@@ -74,7 +76,7 @@ def evaluate_coco(dataset, model, parser=None, threshold=0.05):
                     results.append(image_result)
 
             # append image to list of processed images
-            image_ids.append(dataset.image_ids[index])
+            image_ids.append(coco_object.image_ids[index])
 
             # print progress
             print('{}/{}'.format(index, len(dataset)), end='\r')
@@ -101,7 +103,7 @@ def evaluate_coco(dataset, model, parser=None, threshold=0.05):
 
         return coco_eval
 
-def eval_model_then_pkl_it(dataset_val, model, parser):
+def eval_model_then_pkl_it(dataset_val, model, parser, coco_object):
 
     retinanet = torch.load(os.path.join(parser.models_path, model))
     use_gpu = True
@@ -110,7 +112,7 @@ def eval_model_then_pkl_it(dataset_val, model, parser):
     retinanet.eval()
     eval_file = os.path.join(parser.eval_path, '{}_results.pkl'.format(model))
 
-    coco_eval = evaluate_coco(dataset_val, retinanet, parser)
+    coco_eval = evaluate_coco(dataset_val, retinanet, parser, coco_object)
     with open(eval_file, 'wb') as fid:
         pickle.dump(coco_eval, fid, pickle.HIGHEST_PROTOCOL)
         print('Wrote COCO eval results to: {}'.format(eval_file))
@@ -126,6 +128,7 @@ def main(args=None):
     parser.add_argument('--models_path', help='Path to model (.pt) file.', default='/data/deeplearning/dataset/training/data/newLossRes')
     parser.add_argument('--eval_path', help='Path to model (.pt) file.', default='/data/deeplearning/dataset/training/data/new_loss_evaluations')
     parser.add_argument('--model', help='Path to model (.pt) file.', default='')
+    parser.add_argument('--batch_size', type=int, default=1)
     parser = parser.parse_args(args)
 
     if parser.dataset == 'coco':
@@ -137,7 +140,7 @@ def main(args=None):
     else:
         raise ValueError('Dataset type not understood (must be csv or coco), exiting.')
 
-    sampler_val = AspectRatioBasedSampler(dataset_val, batch_size=1, drop_last=False)
+    sampler_val = AspectRatioBasedSampler(dataset_val, batch_size=parser.batch_size, drop_last=False)
     dataloader_val = DataLoader(dataset_val, num_workers=1, collate_fn=collater, batch_sampler=sampler_val)
 
     models_ls = os.listdir(parser.models_path)
@@ -152,7 +155,8 @@ def main(args=None):
         if eval_m and parser.model in m:
             #parser.s_norm = float(m.split('snorm')[1][1:4])
             parser.s_norm = 4.0
-            eval_model_then_pkl_it(dataset_val, m, parser)
+            #eval_model_then_pkl_it(dataset_val, m, parser)
+            eval_model_then_pkl_it(dataloader_val, m, parser, dataset_val)
 
 
 if __name__ == '__main__':
