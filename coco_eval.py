@@ -18,8 +18,6 @@ from torchvision import datasets, models, transforms
 from dataloader import CocoDataset, CSVDataset, collater, Resizer, AspectRatioBasedSampler, Augmenter, UnNormalizer, \
     Normalizer
 
-#assert torch.__version__.split('.')[1] == '4'
-
 print('CUDA available: {}'.format(torch.cuda.is_available()))
 
 

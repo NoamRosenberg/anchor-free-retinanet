@@ -1,1 +1,1 @@
-Working on new loss function which could enable an anchor-free Retinanet
+New loss function which enables an anchor-free detection with FPN
