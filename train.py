@@ -119,7 +119,8 @@ def main(args=None):
 		scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True)
 	else:
 		optimizer = optim.SGD(retinanet.parameters(), lr=parser.lr, momentum=0.9, weight_decay=0.0001)
-		scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True)
+		#scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True)
+		scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.1)
 
 	loss_hist = collections.deque(maxlen=500)
 
@@ -179,8 +180,11 @@ def main(args=None):
 #			print('Evaluating dataset')
 #			mAP = csv_eval.evaluate(dataset_val, retinanet)
 
-		#if not parser.adam: ???
-		scheduler.step(np.mean(epoch_loss))
+		if not parser.adam:
+			scheduler.step()
+		else:
+			scheduler.step(np.mean(epoch_loss))
+
 		print('saving checkpoint')
 		torch.save(retinanet.module, os.path.join(parser.save_model_dir,'{}_retinanet_{}_perc_{}_tval_{}_bs_{}_lr_{}_ada_{}_mom_{}.pt'.format(parser.dataset, epoch_num, parser.perc, parser.t_val, parser.batch_size, parser.lr, parser.adam, parser.momentum)))
 
