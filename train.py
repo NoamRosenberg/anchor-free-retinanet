@@ -15,7 +15,7 @@ from torch.optim import lr_scheduler
 from torch.autograd import Variable
 from torchvision import datasets, models, transforms
 import torchvision
-import tensorflow as tf
+#import tensorflow as tf
 import model
 from anchors import Anchors
 import losses
@@ -43,6 +43,7 @@ def main(args=None):
 	parser.add_argument('--depth', help='Resnet depth, must be one of 18, 34, 50, 101, 152', type=int, default=50)
 	parser.add_argument('--epochs', help='Number of epochs', type=int, default=100)
 	parser.add_argument('--lr', help='learning rate', type=float, default=1e-2)
+	parser.add_argument('--decay', type=int, default=0)
 	parser.add_argument('--s_norm', help='normalize regression outputs', type=float, default=4.0)
 	parser.add_argument('--t_val', help='sensitivity of per pyramid loss', type=float, default=1.7)
 	parser.add_argument('--IOU', help='IoU loss or regular regression loss', type=int, default=1)
@@ -52,11 +53,11 @@ def main(args=None):
 	parser.add_argument('--perc', help='adam opt', type=int, default=1)
 	parser.add_argument('--batch_size', help='adam opt', type=int, default=2)
 	parser.add_argument('--momentum', help='sgd momentum', type=float, default=0.9)
-	parser.add_argument('--resume', help='path to model', type=str, default=None)
+	parser.add_argument('--resume', help='path to model', type=str, default='/data/deeplearning/dataset/training/data/newLossRes/coco_retinanet_16_snorm_4.0_tval_1.0_restnorm_1.0_lr_0.001_ada_0.pt')
 	parser.add_argument('--save_model_dir', default='/data/deeplearning/dataset/training/data/newLossRes')
 	parser.add_argument('--log_dir', default='/data/deeplearning/dataset/training/data/log_dir')
 	parser = parser.parse_args(args)
-	tf.summary.FileWriter(parser.log_dir)
+	#tf.summary.FileWriter(parser.log_dir)
 	# Create the data loaders
 	if parser.dataset == 'coco':
 		if parser.coco_path is None:
@@ -162,7 +163,7 @@ def main(args=None):
 				iter_loss.append(float(batch_loss))
 				#example of pyramid losses
 				#instance_loss = np.prod(follow_[0])
-				tf.summary.scalar('mean_iter_loss', np.mean(iter_loss))
+				#tf.summary.scalar('mean_iter_loss', np.mean(iter_loss))
 				if iter_num % 10 == 0:
 					print('Epoch: {} | Iteration: {} | Loss: {:1.5f} | Running loss: {:1.5f}'
 						  .format(epoch_num, iter_num, np.mean(iter_loss), np.mean(loss_hist)))
@@ -181,16 +182,17 @@ def main(args=None):
 #			mAP = csv_eval.evaluate(dataset_val, retinanet)
 
 		if not parser.adam:
-			scheduler.step()
+			if parser.decay:
+				scheduler.step()
 		else:
 			scheduler.step(np.mean(epoch_loss))
 
 		print('saving checkpoint')
-		torch.save(retinanet.module, os.path.join(parser.save_model_dir,'{}_retinanet_{}_perc_{}_tval_{}_bs_{}_lr_{}_ada_{}_mom_{}.pt'.format(parser.dataset, epoch_num, parser.perc, parser.t_val, parser.batch_size, parser.lr, parser.adam, parser.momentum)))
+		torch.save(retinanet.module, os.path.join(parser.save_model_dir,'{}_retinanet_{}_perc_{}_tval_{}_bs_{}_lr_{}_ada_{}_mom_{}_decay_{}.pt'.format(parser.dataset, epoch_num, parser.perc, parser.t_val, parser.batch_size, parser.lr, parser.adam, parser.momentum, parser.decay)))
 
 	retinanet.eval()
 	print('saving model')
-	torch.save(retinanet, os.path.join(parser.save_model_dir,'model_final_{}_perc_{}_tval_{}_bs_{}_lr_{}_ada_{}_mom_{}.pt'.format(epoch_num, parser.perc, parser.t_val, parser.batch_size, parser.lr, parser.adam, parser.momentum)))
+	torch.save(retinanet, os.path.join(parser.save_model_dir,'model_final_{}_perc_{}_tval_{}_bs_{}_lr_{}_ada_{}_mom_{}_decay_{}.pt'.format(epoch_num, parser.perc, parser.t_val, parser.batch_size, parser.lr, parser.adam, parser.momentum, parser.decay)))
 
 if __name__ == '__main__':
  main()
