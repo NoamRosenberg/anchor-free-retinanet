@@ -53,7 +53,7 @@ def main(args=None):
 	parser.add_argument('--perc', help='adam opt', type=int, default=1)
 	parser.add_argument('--batch_size', help='adam opt', type=int, default=2)
 	parser.add_argument('--momentum', help='sgd momentum', type=float, default=0.9)
-	parser.add_argument('--resume', help='path to model', type=str, default='/data/deeplearning/dataset/training/data/newLossRes/coco_retinanet_16_snorm_4.0_tval_1.0_restnorm_1.0_lr_0.001_ada_0.pt')
+	parser.add_argument('--resume', help='path to model', type=str, default=None)
 	parser.add_argument('--save_model_dir', default='/data/deeplearning/dataset/training/data/newLossRes')
 	parser.add_argument('--log_dir', default='/data/deeplearning/dataset/training/data/log_dir')
 	parser = parser.parse_args(args)
